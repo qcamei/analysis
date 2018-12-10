@@ -1,0 +1,394 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.analysis.postgres.mapper.ThemeMapper">
+	
+	<select id="getThemeList" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT s.param_name AS solution_name,n.solution_key,s.parent_key AS dept_key,d.prod_code AS dept_code
+		,n.num_group,n.num_prod,n.num_association
+		FROM project_param s
+		INNER JOIN product_cat d ON d.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId}) AND d.prod_sys_key=s.parent_key
+		INNER JOIN (
+		SELECT g.solution_key,count(DISTINCT g.group_key) AS num_group,sum(g.num_prod) AS num_prod
+		,count(DISTINCT COALESCE(asso.associated_group_key,g.group_key)) AS num_association
+		FROM prod_clustered_group g
+		LEFT OUTER JOIN prod_associated_group asso ON asso.proj=g.proj AND asso.solution_key=g.solution_key AND asso.group_key=g.group_key
+		WHERE g.proj=#{projectId} AND g.display_flag=1
+		GROUP BY g.solution_key
+		) n
+		ON n.solution_key=s.param_key
+		WHERE s.project_id=#{projectId} AND s.param_type='CLUSTER_SOLUTION'
+		ORDER BY dept_code,s.param_name
+		]]>
+	</select>
+	
+	<select id="getDistributionList" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT t.*,CASE interval_type WHEN -199 THEN 'Spend <= 0' WHEN -99 THEN '<= MIN' WHEN 200 THEN '>= MAX' WHEN 1 THEN perc||'-'||(perc+10) ELSE ''||perc END AS perc_desc
+		FROM (
+		SELECT CASE interval_type WHEN 1 THEN (order_ind*10/qualify_cust)*10 ELSE interval_type END AS perc
+		,interval_type
+		,count(*) AS num_cust,min(spend) AS min_stats,max(spend) AS max_stats
+		,round(sum(spend)*100.0/overall_spend,4) AS perc_spend
+		,CASE interval_type WHEN 1 THEN NULL ELSE round(count(*)*100.0/total_cust,4) END AS perc_cust
+		FROM (
+		SELECT p.*
+		,sum(spend) OVER () AS overall_spend
+		,count(*) OVER () AS total_cust
+		,count(CASE WHEN interval_type=1 THEN 1 END) OVER () AS qualify_cust
+		,rank() OVER (PARTITION BY interval_type ORDER BY spend)-1 AS order_ind
+		FROM (
+		SELECT cust_sys_key,spend,CASE WHEN spend<=0.0 THEN -199 ELSE 1 END AS interval_type
+		FROM (
+		SELECT cust_sys_key,sum(spend) AS spend
+		FROM customer_summary p
+		WHERE proj=#{projectId}
+		GROUP BY cust_sys_key
+		) p
+		) p
+		)t
+		GROUP BY 1,2,overall_spend,total_cust
+		) t
+		ORDER BY perc;
+		]]>
+	</select>
+	
+	
+	<select id="purchaseThemes" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT a.param_name AS analysis_name,a.param_key AS analysis_key
+		,a.param_att AS include_depts,a.char_val AS include_groups,ms.num_val AS min_spend,xs.num_val AS max_spend
+		,CASE WHEN f.analysis_key IS NULL THEN 0 ELSE 1 END AS used_flag
+		FROM project_param a
+		LEFT OUTER JOIN (
+		SELECT parent_key AS analysis_key
+		FROM project_param
+		WHERE project_id=#{projectId} AND param_type='FACTOR_SOLUTION' GROUP BY 1
+		) f ON f.analysis_key=a.param_key
+		LEFT OUTER JOIN project_param ms ON ms.project_id=a.project_id AND ms.param_type='FACTOR_CORR_PARAM' AND ms.param_name='MIN_SPEND' AND ms.parent_key=a.param_key
+		LEFT OUTER JOIN project_param xs ON xs.project_id=a.project_id AND xs.param_type='FACTOR_CORR_PARAM' AND xs.param_name='MAX_SPEND' AND xs.parent_key=a.param_key
+		WHERE a.project_id=#{projectId} AND a.param_type='FACTOR_CORR'
+		<if test="codes!=null">
+			AND a.param_att = #{codes}
+		</if>
+		<if test="groups!=null">
+			AND a.char_val = #{groups}
+		</if>
+		<if test="analysisName!=null">
+			AND upper(a.param_name) = upper(#{analysisName})
+		</if>
+		ORDER BY a.created_date desc
+	</select>
+	
+	<select id="getAnalyses" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT p.param_name||'-'||a.param_name AS analysis_name,a.param_key AS analysis_key
+		,round(a.num_val) AS num_factor,a.char_val AS rotation,p.char_val AS include_groups
+		,CASE WHEN seg.profile_key IS NULL THEN 0 ELSE 1 END AS used_flag
+		FROM project_param a
+		INNER JOIN project_param p ON p.param_key=a.parent_key AND p.param_type='FACTOR_CORR'
+		LEFT OUTER JOIN (
+		SELECT pf.parent_key AS profile_key
+		FROM project_param s
+		INNER JOIN project_param pf ON pf.param_key=s.parent_key AND pf.project_id=s.project_id
+		WHERE s.project_id=#{projectId} AND s.param_type='SEGMENTATION' GROUP BY 1
+		) seg ON seg.profile_key=a.param_key
+		WHERE a.project_id=#{projectId} 
+		AND a.param_type='FACTOR_SOLUTION'
+		ORDER BY analysis_name;
+		]]>
+	</select>
+	
+	<select id="getNumFactor" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT num_factor
+		FROM cluster_factor a
+		WHERE proj=#{projectId} AND a.analysis_key=#{analysisKey}
+		GROUP BY 1 ORDER BY num_factor;
+		]]>
+	</select>
+	
+	<select id="getFactorResult" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT d.prod_code AS dept_code,g.group_key,g.group_name,g.num_prod,g.associated_flag,f.rotation,${factorList}
+		FROM cluster_factor f
+		INNER JOIN project_param p
+		ON p.project_id=f.proj AND p.param_key=f.analysis_key AND p.param_type IN ('FACTOR_CORR','FACTOR_SOLUTION')
+		INNER JOIN (
+		SELECT COALESCE(a.associated_group_key,g.group_key) AS group_key,max(COALESCE('*'||a.associated_group_name,g.group_name)) AS group_name
+		,CASE WHEN a.associated_group_key IS NULL THEN 0 ELSE 1 END AS associated_flag
+		,count(dt.sku) AS num_prod,min(dt.dept) AS dept
+		FROM prod_clustered_group g
+		LEFT OUTER JOIN prod_associated_group a
+		ON a.solution_key=g.solution_key AND a.proj=g.proj AND a.group_key=g.group_key
+		LEFT OUTER JOIN prod_cluster_sku dt
+		ON g.solution_key IN (${includeGroups}) AND g.proj=#{projectId} AND g.display_flag=1 AND dt.cluster_key=g.group_key
+		GROUP BY 1,3
+		) g ON g.group_key=f.group_key
+		LEFT OUTER JOIN product_cat d ON d.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId}) AND d.prod_sys_key=g.dept
+		WHERE f.proj=#{projectId} AND f.analysis_key=#{analysisKey}
+		AND f.rotation=#{rotation} AND f.num_factor=#{numFactor}
+		ORDER BY g.group_name
+	</select>
+	
+	<select id="getSavedSolutions" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT CASE WHEN f.param_key IS NULL THEN 1 ELSE 0 END AS theme_flag
+		,p.param_name||'-'||a.param_name||CASE WHEN lpf.lock_seg_key IS NULL THEN '' ELSE ' (Locked)' END AS analysis_name
+		,a.param_key AS theme_key,a.param_key AS analysis_key
+		,f.param_key AS profile_key,p.param_key AS fact_corr_key,p.param_name AS solution_name,a.param_name AS theme_name
+		,round(a.num_val) AS num_factor,a.char_val AS rotation
+		,f.select_factor,f.min_dept,f.min_cluster,f.sample_size,f.seed_size,f.min_num_seg,f.max_num_seg
+		,CASE WHEN pf.seg_key IS NULL THEN 0 ELSE 1 END AS used_flag
+		,CASE WHEN lpf.lock_seg_key IS NULL THEN 0 ELSE 1 END AS lock_flag,p.char_val AS include_groups
+		FROM project_param a
+		INNER JOIN project_param p ON p.param_key=a.parent_key AND p.param_type='FACTOR_CORR'
+		LEFT OUTER JOIN (
+		SELECT parent_key AS seg_key
+		FROM project_param
+		WHERE project_id=#{projectId} AND param_type='SEG_PROFILE' GROUP BY 1
+		) pf ON pf.seg_key=a.param_key
+		LEFT OUTER JOIN (
+		SELECT p.*,d.select_factor,d.min_dept,d.min_cluster,d.sample_size,d.seed_size,d.min_num_seg,d.max_num_seg
+		,row_number() over (PARTITION BY p.parent_key ORDER BY p.param_key DESC) AS profile_ind
+		FROM project_param p
+		INNER JOIN (
+		SELECT parent_key,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='SELECT_FACTOR' THEN char_val END) AS select_factor
+		,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='MIN_DEPT' THEN num_val END) AS min_dept
+		,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='MIN_CLUSTER' THEN num_val END) AS min_cluster
+		,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='SAMPLE_SIZE' THEN num_val END) AS sample_size
+		,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='SEED_SIZE' THEN num_val END) AS seed_size
+		,min(CASE WHEN param_type='SEGMENTATION' THEN num_val END) AS min_num_seg
+		,max(CASE WHEN param_type='SEGMENTATION' THEN num_val END) AS max_num_seg
+		FROM project_param
+		WHERE project_id=#{projectId} AND param_type IN ('FACTOR_SLN_PARAM','SEGMENTATION')
+		GROUP BY parent_key
+		) d ON d.parent_key=p.param_key
+		WHERE p.project_id=#{projectId} AND p.param_type='SEG_PROFILE'
+		) f ON f.parent_key=a.param_key AND f.profile_ind=1
+		LEFT OUTER JOIN (
+		SELECT param_key AS lock_seg_key
+		FROM project_param_arc
+		WHERE project_id=#{projectId} AND param_type='SEG_PROFILE' GROUP BY 1
+		) lpf ON lpf.lock_seg_key=f.param_key
+		WHERE a.project_id=#{projectId} AND a.param_type='FACTOR_SOLUTION'
+		ORDER BY theme_key,theme_flag DESC,analysis_name
+	</select>
+	
+	<select id="getSavedSolutionsById" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT p.param_name||'-'||a.param_name AS analysis_name,a.parent_key AS analysis_key
+				,round(a.num_val) AS num_factor,a.char_val AS rotation,p.char_val AS include_groups
+				,CASE WHEN seg.profile_key IS NULL THEN 0 ELSE 1 END AS used_flag
+				FROM project_param a
+				INNER JOIN project_param p ON p.param_key=a.parent_key AND p.param_type='FACTOR_CORR'
+				LEFT OUTER JOIN (
+				  SELECT pf.parent_key AS profile_key
+				  FROM project_param s
+				  INNER JOIN project_param pf ON pf.param_key=s.parent_key AND pf.project_id=s.project_id
+				  WHERE s.project_id= #{projectId} AND s.param_type='SEGMENTATION' GROUP BY 1
+				) seg ON seg.profile_key=a.param_key
+				WHERE a.project_id= #{projectId} AND a.param_key= #{themeKey}
+				  AND a.param_type='FACTOR_SOLUTION'
+				ORDER BY analysis_name
+	</select>
+	
+	<select id="getFactorName" parameterType="java.util.Map" resultType="java.lang.String">
+		<![CDATA[
+		SELECT COALESCE(a.param_name,'Theme '||t.n) AS factor_name
+		FROM (
+		WITH RECURSIVE t(n) AS (
+		VALUES (1)
+		UNION ALL
+		SELECT n+1 FROM t WHERE n<#{numFactor}
+		)
+		SELECT n FROM t
+		) t
+		LEFT OUTER JOIN project_param a
+		ON a.num_val=t.n AND a.project_id=#{projectId} AND a.param_type='FACTOR_NAME'
+		AND a.parent_key=#{analysisKey} AND a.param_att='${numFactor}'
+		ORDER BY t.n
+		]]>
+	</select>
+	
+	<select id="checkFactorName" parameterType="java.util.Map" resultType="int">
+		SELECT count(*) FROM project_param WHERE project_id=#{projectId} AND upper(param_name)=upper(#{name})
+		AND param_type='FACTOR_NAME' AND num_val!=#{factorInd} AND parent_key=#{analysisKey}
+	</select>
+	
+	<update id="updateFactorName" parameterType="java.util.Map">
+		UPDATE project_param SET param_name=#{name} WHERE project_id=#{projectId}
+		AND param_type='FACTOR_NAME' AND num_val=#{factorInd}
+		AND parent_key=#{analysisKey} AND param_att='${numFactor}'
+	</update>
+	
+	
+	<insert id="saveFactorName" parameterType="java.util.Map">
+		INSERT INTO project_param(project_id,param_type,param_key,parent_key,param_name,param_att,char_val,num_val,created_date,created_by)
+		VALUES(#{projectId},'FACTOR_NAME',nextval('sub_proj_seq'),#{analysisKey},#{name},#{numFactor},#{rotation},#{factorInd},now(), #{username})
+	</insert>
+	
+	<select id="purchaseThemes2" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT COALESCE(a.param_name,'Theme '||t.n) AS factor_name,t.n AS factor_ind,a.param_key AS factor_key
+		,CASE WHEN t.n IN (WITH RECURSIVE t(n) AS ( VALUES (1) UNION ALL SELECT n+1 FROM t WHERE n<#{numFactor} ) SELECT n FROM t) THEN 1 ELSE 0 END AS selected_flag
+		FROM (
+		WITH RECURSIVE t(n) AS (
+		VALUES (1)
+		UNION ALL
+		SELECT n+1 FROM t WHERE n<#{numFactor}
+		)
+		SELECT n FROM t
+		) t
+		LEFT OUTER JOIN project_param a
+		ON a.num_val=t.n AND a.project_id=#{projectId} AND a.param_type='FACTOR_NAME'
+		AND a.parent_key=#{parentKey} AND a.param_att='${numFactor}'
+		ORDER BY factor_ind
+		]]>
+	</select>
+	
+	<select id="checkFactorSolution2" parameterType="java.util.Map" resultType="int">
+		SELECT COUNT(1) FROM project_param WHERE project_id = #{projectId} AND param_type = 'FACTOR_SOLUTION' AND parent_key = #{analysisKey} AND  char_val = #{rotation} AND num_val = #{numFactor}
+	</select>
+	
+	<select id="checkSavedSolutions" parameterType="java.util.Map" resultType="int">
+		SELECT COUNT(1) FROM project_param WHERE project_id = #{projectId} AND param_type = 'FACTOR_SOLUTION' AND parent_key = #{analysisKey} 
+	</select>
+	
+	<insert id="saveFactorSolution" parameterType="java.util.Map" >
+		INSERT INTO project_param(project_id,param_type,param_key,parent_key,param_name,char_val,num_val,created_date,created_by) VALUES(#{projectId},'FACTOR_SOLUTION',#{paramKey},#{analysisKey} ,#{factorName},upper(#{rotation}),#{numFactor},now(),#{username})
+	</insert>
+	
+	
+	<delete id="deleteClusterFactor" parameterType="java.util.Map" >
+		DELETE FROM cluster_factor WHERE proj=#{projectId} AND analysis_key=#{analysisKey} AND num_factor=#{numFactor} AND rotation=#{rotation}
+	</delete>
+	
+	<insert id="saveClusterFactor" parameterType="java.util.Map">
+		INSERT INTO cluster_factor(proj,analysis_key,num_factor,rotation,group_key,${factorList})
+		SELECT DISTINCT t.* FROM (${query}) t
+	</insert>
+	
+	<select id="checkFactorSolution" parameterType="java.util.Map" resultType="int">
+		SELECT count(*) FROM (SELECT * FROM project_param
+		WHERE project_id=#{projectId} AND parent_key=#{analysisKey} AND param_type IN ('SEGMENTATION') LIMIT 1) t
+	</select>
+	
+	<delete id="deleteClusterFactor3" parameterType="java.util.Map">
+		DELETE FROM cluster_factor WHERE proj=#{projectId} AND analysis_key=#{analysisKey}
+	</delete>
+	
+	<delete id="deleteCustomerSegments" parameterType="java.util.Map">
+		DELETE FROM customer_segments_${projectId} WHERE proj=#{projectId} AND analysis_key=#{analysisKey} 
+	</delete>
+	
+	<delete id="deleteCustomerNormalProfile" parameterType="java.util.Map">
+		DELETE FROM customer_normal_profile_${projectId} WHERE proj=#{projectId} AND analysis_key=#{analysisKey} 
+	</delete>
+	
+	<delete id="deleteProjectParam"  parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id=#{projectId} AND parent_key=#{analysisKey}  AND param_type IN ('FACTOR_NAME','FACTOR_SLN_PARAM')
+	</delete>
+	
+	<delete id="deleteProjectParam2"  parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id=#{projectId} AND parent_key=#{analysisKey} AND param_type='FACTOR_SOLUTION'
+	</delete>
+	
+	<delete id="deleteCorrelationVector"  parameterType="java.util.Map">
+		DELETE FROM correlation_vector WHERE proj=#{projectId} AND analysis_key=#{analysisKey}
+	</delete>
+	
+	<delete id="deleteProdClusteredGroup"  parameterType="java.util.Map">
+		DELETE FROM prod_clustered_group WHERE proj=#{projectId} AND solution_key=#{analysisKey}
+	</delete>
+	
+	<delete id="deleteProdAssociatedGroup"  parameterType="java.util.Map">
+		DELETE FROM prod_associated_group WHERE proj=#{projectId} AND solution_key=#{analysisKey}
+	</delete>
+	
+	<delete id="dropCustomerClusterSummary"  parameterType="java.util.Map">
+		DROP TABLE IF EXISTS customer_cluster_summary_${analysisKey}
+	</delete>
+	
+	<delete id="deleteCustomerClusterSummary"  parameterType="java.util.Map">
+		DELETE FROM customer_cluster_summary WHERE proj=#{projectId} AND analysis_key=#{analysisKey}
+	</delete>
+	
+	<delete id="deleteClusterFactor2"  parameterType="java.util.Map">
+		DELETE FROM cluster_factor WHERE proj=#{projectId} AND analysis_key IN (
+			SELECT #{analysisKey} UNION
+			SELECT param_key FROM project_param WHERE  project_id=#{projectId} AND parent_key=#{analysisKey} AND param_type='FACTOR_SOLUTION'
+		)
+	</delete>
+	
+	<delete id="deleteProjectParam3"  parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id=#{projectId} AND param_type='FACTOR_NAME' AND parent_key IN (
+		SELECT param_key FROM project_param
+		WHERE  project_id=#{projectId} AND parent_key=#{analysisKey} AND param_type='FACTOR_SOLUTION'
+		)
+	</delete>
+	
+	<delete id="deleteProjectParam4"  parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id=#{projectId} AND parent_key=#{analysisKey} 
+		AND param_type IN ('FACTOR_NAME','FACTOR_SOLUTION','FACTOR_CORR_PARAM')
+	</delete>
+	
+	<delete id="deleteProjectParam5"  parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id=#{projectId} AND param_key=#{analysisKey}  AND param_type='FACTOR_CORR'
+	</delete>
+	
+	<select id="getDeptDistribution"  parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT CASE WHEN stats>=4 THEN 4 ELSE stats END AS stats,count (*) AS num_cust FROM (
+		SELECT cust_sys_key,count (*) AS stats FROM (
+		SELECT cust_sys_key,dept FROM customer_cluster_summary WHERE proj=#{projectId} AND analysis_key=#{analysisKey} AND select_flag=1 GROUP BY 1,2) t GROUP BY 1) t GROUP BY 1 ORDER BY 1 DESC
+	</select>
+	
+	<select id="getClusterDistribution" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT CASE WHEN stats>=7 THEN 7 ELSE stats END AS stats,count (*) AS num_cust FROM (
+		SELECT cust_sys_key,count (*) AS stats FROM customer_cluster_summary WHERE proj=#{projectId} AND analysis_key=#{analysisKey} AND select_flag=1 GROUP BY 1) t GROUP BY 1 ORDER BY 1 DESC;
+	</select>
+	
+	<select id="getSubProjSeq"  resultType="int">
+		SELECT nextval('sub_proj_seq')
+	</select>
+	
+	<select id="getAllSavedProfileKey" parameterType="java.util.Map" resultType="java.util.Map" >
+		SELECT CASE WHEN f.param_key IS NULL THEN 1 ELSE 0 END AS theme_flag 
+		   ,p.param_name||'-'||a.param_name||CASE WHEN lpf.lock_seg_key IS NULL THEN '' ELSE ' (Locked)' END AS analysis_name 
+		   ,a.param_key AS theme_key,a.param_key AS analysis_key 
+		   ,f.param_key AS profile_key,p.param_key AS fact_corr_key,p.param_name AS solution_name,a.param_name AS theme_name 
+		   ,round(a.num_val) AS num_factor,a.char_val AS rotation 
+		   ,f.select_factor,f.min_dept,f.min_cluster,f.sample_size,f.seed_size,f.min_num_seg,f.max_num_seg 
+		   ,CASE WHEN pf.seg_key IS NULL THEN 0 ELSE 1 END AS used_flag 
+		   ,CASE WHEN lpf.lock_seg_key IS NULL THEN 0 ELSE 1 END AS lock_flag 
+		 FROM   project_param a 
+		 INNER JOIN   project_param   p ON p.param_key=a.parent_key AND p.param_type='FACTOR_CORR' 
+		 LEFT OUTER JOIN ( 
+		   SELECT parent_key AS seg_key 
+		   FROM   project_param   
+		   WHERE project_id=  #{projectId}   AND param_type='SEG_PROFILE' GROUP BY 1 
+		 ) pf ON pf.seg_key=a.param_key 
+		 LEFT OUTER JOIN ( 
+		 SELECT p.*,d.select_factor,d.min_dept,d.min_cluster,d.sample_size,d.seed_size,d.min_num_seg,d.max_num_seg 
+		   ,row_number() over (PARTITION BY p.parent_key ORDER BY p.param_key DESC) AS profile_ind 
+		 FROM   project_param p 
+		 INNER JOIN ( 
+		   SELECT parent_key,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='SELECT_FACTOR' THEN char_val END) AS select_factor 
+		     ,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='MIN_DEPT' THEN num_val END) AS min_dept 
+		     ,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='MIN_CLUSTER' THEN num_val END) AS min_cluster 
+		     ,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='SAMPLE_SIZE' THEN num_val END) AS sample_size 
+		     ,max(CASE WHEN param_type='FACTOR_SLN_PARAM' AND param_name='SEED_SIZE' THEN num_val END) AS seed_size 
+		     ,min(CASE WHEN param_type='SEGMENTATION' THEN num_val END) AS min_num_seg 
+		     ,max(CASE WHEN param_type='SEGMENTATION' THEN num_val END) AS max_num_seg 
+		   FROM   project_param   
+		   WHERE project_id=  #{projectId} AND param_type IN ('FACTOR_SLN_PARAM','SEGMENTATION') 
+		   GROUP BY parent_key 
+		 ) d ON d.parent_key=p.param_key 
+		 WHERE p.project_id=  #{projectId} AND p.param_type='SEG_PROFILE' 
+		 ) f ON f.parent_key=a.param_key AND f.profile_ind=1 
+		 LEFT OUTER JOIN ( 
+		   SELECT param_key AS lock_seg_key 
+		   FROM project_param_arc 
+		   WHERE project_id=  #{projectId} AND param_type='SEG_PROFILE' GROUP BY 1 
+		 ) lpf ON lpf.lock_seg_key=f.param_key 
+		 WHERE a.project_id=  #{projectId} AND a.param_type='FACTOR_SOLUTION'  AND a.param_key = #{solutionKey}
+		 ORDER BY theme_key,theme_flag DESC,analysis_name
+	</select>
+	
+</mapper>

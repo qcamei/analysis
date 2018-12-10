@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.analysis.postgres.mapper.ProjectMapper">
+	<resultMap id="BaseResultMap" type="java.util.Map">
+		<result column="project_id" property="projectId" jdbcType="INTEGER" />
+	    <result column="project_name" property="project_name" jdbcType="VARCHAR" />
+	    <result column="db_name" property="db_name" jdbcType="VARCHAR" />
+	    <result column="project_type" property="project_type" jdbcType="VARCHAR" />
+	    <result column="created_date" property="created_date" jdbcType="VARCHAR" />
+		<collection property="familys" ofType="java.util.Map" column="project_id" select="net.mofancy.analysis.postgres.mapper.FamilyMapper.getDigitalList">  
+        </collection> 
+		<collection property="analyses" ofType="java.util.Map" column="project_id" select="net.mofancy.analysis.postgres.mapper.ThemeMapper.getAnalyses">  
+        </collection> 
+        <collection property="segments" ofType="java.util.Map" column="project_id" select="net.mofancy.analysis.postgres.mapper.SegmentMapper.getSegmentList">  
+        </collection> 
+	</resultMap>
+	
+	<select id="selectListByCondition" parameterType="java.util.Map" resultMap="BaseResultMap">
+		SELECT project_name,#{datasetKey} AS dataset_sys_key,#{datasetName} AS db_name,P.project_id,P.created_date,CASE p.project_type WHEN 'LFS' THEN 'Lifestyle' WHEN 'VALUE' THEN 'Value' ELSE initcap(p.project_type) END AS project_type FROM project P LEFT OUTER JOIN ( SELECT DISTINCT project_id FROM project_param_arc ) M ON P.project_id = M.project_id
+		WHERE 1 = 1
+		<if test="projectName != null">
+			AND LOWER(p.project_name) like LOWER('%'||#{projectName}||'%')
+		</if>
+	</select>
+	
+	<select id="getProjectById" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+			SELECT 'Project' AS param_name, project_name AS param_info FROM project WHERE project_id=#{projectId}
+			UNION ALL
+			SELECT 'Description', project_desc FROM project WHERE project_id=#{projectId}
+			UNION ALL
+			SELECT 'Period Length', char_val FROM project_param t1
+			LEFT OUTER JOIN (
+			SELECT count(*) AS num_row FROM project_param
+			WHERE project_id=#{projectId} AND param_type IN ('PROJ_DATA','PROJ_SETUP') AND param_name='Period'
+			) t2 ON 1=1
+			WHERE project_id=#{projectId} AND COALESCE(t2.num_row)<1
+			AND param_type='MAINTENANCE_PARAM' AND param_name='SEG_PERIOD'
+			UNION ALL
+			SELECT * FROM (
+			SELECT param_name,COALESCE(replace(char_val,chr(13),'
+			'),''||num_val) AS param_info
+			FROM project_param
+			WHERE project_id=#{projectId} AND param_type IN ('PROJ_DATA','PROJ_SETUP')
+			ORDER BY param_key,param_key,param_name
+			) t
+			UNION ALL 
+			SELECT 'Type' AS param_name,CASE p.project_type WHEN 'LFS' THEN 'Lifestyle' WHEN 'VALUE' THEN 'Value' ELSE initcap(p.project_type) END AS param_info FROM project p WHERE project_id = #{projectId}
+			UNION ALL 
+			SELECT DISTINCT 'Db Name' AS param_name,#{datasetName} AS param_info FROM project WHERE project_id =#{projectId}
+		]]>
+	</select>
+	
+	<select id="checkProjectExist" parameterType="java.lang.String" resultType="int">
+		SELECT COUNT(1) FROM project WHERE project_name = #{projectName}
+	</select>
+	
+	<insert id="saveNewProjectParam">
+		INSERT INTO project_param(project_id,param_key,param_type,param_name,char_val,created_date,created_by) 
+		VALUES (#{projectId},nextval('sub_proj_seq'),#{paramType},#{paramName},#{charVal},now(),#{username})
+	</insert>
+	
+	<delete id="deleteProjectParam" parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id = #{projectId}
+	</delete>
+	
+	<select id="getProjectId" resultType="int">
+		SELECT nextval('project_key_seq') 
+	</select>
+	
+	
+	<select id="getJobId" resultType="int">
+		SELECT nextval('jqueue_job_seq')
+	</select>
+	
+	<select id="getProjectParam" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT * FROM project_param WHERE param_name = #{paramName} AND project_id = #{projectId}
+	</select>
+	
+	
+	<select id="getGoodsList"  parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT
+		  	p0.prod_code,
+			p0.prod_type,
+			p0.prod_desc,
+			p0.parent_prod_code AS parent_code,
+			p0.parent_prod_type AS parent_type,
+			s.total_cust,
+			s.total_spend,
+			s.total_quantity,
+			CASE WHEN s.total_quantity = 0 THEN 0 ELSE round( s.total_spend / s.total_quantity, 2 ) END AS avg_price 
+		FROM
+			product_summary s
+			INNER JOIN product_sku p0 ON p0.prod_type = ( SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId} ) 
+			AND s.prod_sys_key = p0.prod_sys_key 
+		WHERE
+			s.proj = #{projectId} 
+			AND s.prod_type = ( SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId}  ) 
+		<if test="prodCode!=null">
+			AND LOWER(p0.prod_code) LIKE LOWER('%'||#{prodCode}||'%')
+		</if>
+		<if test="prodDesc!=null">
+			AND LOWER(p0.prod_desc) LIKE LOWER('%'||#{prodDesc}||'%')
+		</if>
+		<if test="parentCode!=null">
+			AND LOWER(p1.prod_code) LIKE LOWER('%'||#{parentCode}||'%')
+		</if>
+		<if test="parentDesc!=null">
+			AND LOWER(p1.prod_desc) LIKE LOWER('%'||#{parentDesc}||'%')
+		</if>
+		ORDER BY ${sort}
+	</select>
+	
+	<select id ="deptDataGrid" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT p.prod_sys_key,p.prod_code,p.prod_desc,pc.num_prod,s.total_cust,s.total_spend,s.total_quantity
+		,CASE WHEN s.prod_sys_key IS NULL OR pc.dept_sys_key IS NULL THEN '' ELSE 'DONE' END AS created_summary
+		,CASE WHEN pm.dept IS NULL THEN '' ELSE 'DONE' END AS created_matrix
+		FROM product_cat p
+		LEFT OUTER JOIN product_summary s ON s.proj=#{projectId} AND s.prod_sys_key=p.prod_sys_key AND s.prod_type=p.prod_type
+		LEFT OUTER JOIN (
+		SELECT dept_sys_key,count(*) AS num_prod
+		FROM product_summary 
+		WHERE proj=#{projectId} AND prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId})
+		GROUP BY dept_sys_key
+		) pc ON p.prod_sys_key=pc.dept_sys_key
+		LEFT OUTER JOIN (
+		SELECT dept FROM prod_matrix WHERE proj=#{projectId} GROUP BY dept
+		) pm ON p.prod_sys_key=pm.dept
+		WHERE p.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId})
+		ORDER BY p.prod_desc
+	</select>
+</mapper>

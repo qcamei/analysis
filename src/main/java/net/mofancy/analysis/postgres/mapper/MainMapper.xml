@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.analysis.postgres.mapper.MainMapper">
+	
+	<select id="getArcZincProess" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT start_time,complete_time,submitted_by,submitted_time,job_id,process_desc,process_name,process_status,'FINISHED' AS status FROM  (SELECT * FROM arc_zinc_process  WHERE submitted_by = #{submittedBy} ORDER BY
+	submitted_time DESC LIMIT 10 ) t 
+		UNION ALL
+		SELECT start_time,complete_time,submitted_by,submitted_time,job_id,process_desc,process_name,process_status,'RUNNING' AS status FROM zinc_process  WHERE submitted_by = #{submittedBy} ORDER BY submitted_time DESC
+	</select>
+	
+	<select id="checkJQueue" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT COUNT(1) AS jobnum  FROM zinc_process  WHERE submitted_by = #{submittedBy} 
+	</select>
+	
+</mapper>

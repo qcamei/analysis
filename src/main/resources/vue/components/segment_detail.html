@@ -1,0 +1,288 @@
+<el-container class="content">
+	<el-main>
+		<el-tabs type="border-card" v-model="activeName">
+		  <el-tab-pane label="市场细分" name="first">
+		  		<el-container>
+			  <el-header>
+			  	<el-form size="mini" label-width="140px" :inline="true">
+			  		<el-form-item label="市场细分列表：">
+					    <el-select v-model="segmentationKey" style="width:320px;" placeholder="请选择" @change="changeSel">
+					      <el-option v-for="item in segmentions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					<el-form-item>
+						<el-input style="width:320px;" v-model="segmentationName"></el-input>
+					</el-form-item>
+					<el-form-item>
+						<el-button :disabled="segmentationKey===''" type="primary" >重命名</el-button>
+					 </el-form-item>
+					  <el-form-item>
+						<el-button :disabled="segmentationKey===''" type="primary" >导出</el-button>
+					 </el-form-item>
+					<el-form-item v-show="chartTable=='table'" >
+						<el-button  @click="chartTable='chart'" type="primary">图形显示</el-button>
+					 </el-form-item>
+					 <el-form-item v-show="chartTable=='chart'">
+					<el-button  @click="chartTable='table'" type="primary">表格显示</el-button>
+					</el-form-item>
+			  	</el-form>
+			  </el-header>
+			  <el-main v-show="chartTable=='table'" style="overflow:hidden;padding: 10px 0;">
+			  		<el-table
+				    :data="segmentationSummaryData"
+				    border
+				    show-summary
+				    :summary-method="getSummaries"
+				    style="min-height:180px"
+				    height="180"
+				    highlight-current-row
+				    >
+				     <el-table-column
+				      label="SN"
+				      type="index" width="55"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="segment_name"
+				      label="群体名"
+				      width="200"
+				      :show-overflow-tooltip="true"
+				      >
+				      <template slot-scope="{row,$index}">
+     					 <div style="width:100%;" @dblclick="editable($event,row,$index)">{{row.segment_name}}</div>
+					   </template>
+				    </el-table-column>
+				    <el-table-column
+				      prop="customer_count"
+				      label="人数数量"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="avg_spend"
+				      label="平均消费额"
+				      width="100"
+				      >
+				    </el-table-column>
+				    <!-- 自定义列的遍历  -->     
+				    <el-table-column v-for="(item, index) in segmentNames" :column-key="'f'+item.factor_ind" :key="index" :label="item.factor_name" >          
+					    <template slot-scope="scope">           
+					    <span>{{Math.round(scope.row["f"+(index+1)]*100)/100+'%'}}</span>          
+					    </template>        
+				    </el-table-column>
+				  </el-table>
+			  </el-main>
+			  <el-main v-show="chartTable=='table'" style="overflow:hidden;padding: 10px 0;">
+			  		<el-table
+				    :data="segmentationSummaryData"
+				    border
+				    highlight-current-row
+				    style="min-height:180px"
+				    height="180"
+				    :cell-style="cellStyle"
+				    >
+				     <el-table-column
+				      label="SN"
+				      type="index" width="55"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="segment_name"
+				      label="群体名"
+				      width="200"
+				      :show-overflow-tooltip="true"
+				      >
+				      <template slot-scope="{row,$index}">
+     					 <div style="width:100%;" @dblclick="editable($event,row,$index)">{{row.segment_name}}</div>
+					   </template>
+				    </el-table-column>
+				    <el-table-column
+				      prop="customer_perc"
+				      label="人数数量占比"
+				      >
+				      <template slot-scope="scope">           
+					    <span>{{Math.round(scope.row["customer_perc"]*100)/100+'%'}}</span>          
+					    </template>
+				    </el-table-column>
+				    <el-table-column
+				      prop="spend_perc"
+				      label="消费额占比"
+				      width="100"
+				      >
+				      <template slot-scope="scope">           
+					    <span>{{Math.round(scope.row["spend_perc"]*100)/100+'%'}}</span>          
+					  </template>
+				    </el-table-column>
+				    <!-- 自定义列的遍历  -->     
+				    <el-table-column v-for="(item, index) in segmentNames" :show-overflow-tooltip="true" :column-key="'fi'+item.factor_ind"  :key="index" :label="item.factor_name" >          
+					     <template slot-scope="scope" >           
+					    <span >{{Math.round(scope.row["fi"+(index+1)])}}</span>          
+					    </template>          
+				    </el-table-column>
+				  </el-table>
+			  </el-main>
+			  <el-main v-show="chartTable=='chart'" style="overflow:hidden;padding: 10px 0;">
+			  <el-form size="mini" label-width="140px" :inline="true">
+			  		<el-form-item label="X：">
+					    <el-select v-model="xKey" placeholder="请选择" @change="xChangeSel">
+					      <el-option v-for="item in xOptions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					<el-form-item label="Y：">
+					    <el-select v-model="yKey" placeholder="请选择" @change="yChangeSel">
+					      <el-option v-for="item in yOptions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					<el-form-item label="Size：">
+					    <el-select v-model="sizeKey" placeholder="请选择" @change="sizeChangeSel">
+					      <el-option v-for="item in sizeOptions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+			  	</el-form>
+			  	<div id="bubbleChart" style="width:100%;height:400px;background:#eeeeee;"></div>
+			  </el-main>
+			  <el-footer v-show="chartTable=='table'">
+			  	 <blockquote class="layui-elem-quote layui-quote-nm" style="border-width: 1px 5px 1px 1px;text-align:right;">
+						  <div style="display:inline-block;width:80px;">
+						  	 <span class="layui-badge" style="background:#e48186;"></span> <span class="layui-badge" style="background:#fff;color:#333;">&lt;50</span>
+						  </div>
+						  <div style="display:inline-block;width:80px;">
+							  <span class="layui-badge" style="background:#ddaab2;"></span> <span class="layui-badge" style="background:#fff;color:#333;">50-80</span>
+						  </div>
+						  <div style="display:inline-block;width:80px;">
+						  	  <span class="layui-badge" style="background:#a8e8da;"></span> <span class="layui-badge" style="background:#fff;color:#333;">81-119</span>
+						  </div>
+						  <div style="display:inline-block;width:80px;">
+						  	  <span class="layui-badge" style="background:#c1de71;"></span> <span class="layui-badge" style="background:#fff;color:#333;">120-200</span>
+						  </div>
+						  <div style="display:inline-block;width:80px;">
+						  	<span class="layui-badge" style="background:#81ce69;"></span> <span class="layui-badge" style="background:#fff;color:#333;">&gt;200</span>
+						  </div>
+						  <br>
+						  <span class="layui-bg-gray layui-badge" style="display:inline-block !important;width:140px;">低于平均值</span>
+						  <span class="layui-bg-gray layui-badge" style="display:inline-block !important;width:140px;">平均区间</span>
+						  <span class="layui-bg-gray layui-badge" style="display:inline-block !important;width:80px;">高于平均</span>
+						</blockquote>
+			  </el-footer>
+			</el-container>			  
+		  </el-tab-pane>
+		  <el-tab-pane label="商品影像" name="second">
+		  	<el-container>
+			  <el-header>
+			  	<el-form size="mini" label-width="140px" :inline="true">
+			  		<el-form-item label="市场细分列表：">
+					    <el-select v-model="segmentationKey" style="width:320px;" placeholder="请选择" @change="changeSel">
+					      <el-option v-for="item in segmentions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					 <el-form-item style="margin-left:287px;">
+						<el-button type="primary" >计算特征指数</el-button>
+					 </el-form-item>
+			  	</el-form>
+			  	<el-form size="mini" label-width="140px" :inline="true">
+			  		<el-form-item label=" ">
+					    <el-select v-model="statsKey" placeholder="请选择">
+					      <el-option v-for="item in statsOptions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					<el-form-item>
+					    <el-select v-model="levelKey" placeholder="请选择">
+					      <el-option v-for="item in levelOptions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					<el-form-item>
+					    <el-select v-model="limitKey" placeholder="请选择">
+					      <el-option v-for="item in limitOptions"
+					      :key="item.value"
+					      :label="item.label"
+					      :value="item.value">
+					     </el-option>
+					    </el-select>
+					</el-form-item>
+					 <el-form-item>
+						<el-button type="primary" >导出当前报表</el-button>
+					 </el-form-item>
+			  	</el-form>
+			  </el-header>
+			  <el-main style="overflow:hidden;padding: 10px 0;">
+			  		<el-table
+				    :data="segmentationSummaryData"
+				    border
+				    highlight-current-row
+				    style="min-height:180px"
+				    height="180"
+				    :cell-style="cellStyle"
+				    >
+				     <el-table-column
+				      label="SN"
+				      type="index" width="55"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="segment_name"
+				      label="群体名"
+				      width="200"
+				      :show-overflow-tooltip="true"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="customer_perc"
+				      label="人数数量占比"
+				      >
+				      <template slot-scope="scope">           
+					    <span>{{Math.round(scope.row["customer_perc"]*100)/100+'%'}}</span>          
+					    </template>
+				    </el-table-column>
+				    <el-table-column
+				      prop="spend_perc"
+				      label="消费额占比"
+				      width="100"
+				      >
+				      <template slot-scope="scope">           
+					    <span>{{Math.round(scope.row["spend_perc"]*100)/100+'%'}}</span>          
+					  </template>
+				    </el-table-column>
+				    <!-- 自定义列的遍历  -->     
+				    <el-table-column v-for="(item, index) in segmentNames" :show-overflow-tooltip="true" :column-key="'fi'+item.factor_ind"  :key="index" :label="item.factor_name" >          
+					     <template slot-scope="scope" >           
+					    <span >{{Math.round(scope.row["fi"+(index+1)])}}</span>          
+					    </template>          
+				    </el-table-column>
+				  </el-table>
+			  </el-main>
+			  <el-footer>
+			  	 
+			  </el-footer>
+			</el-container>
+		  </el-tab-pane>
+		</el-tabs>
+		
+	</el-main>
+</el-container>

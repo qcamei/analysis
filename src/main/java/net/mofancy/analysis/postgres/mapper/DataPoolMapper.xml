@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.analysis.postgres.mapper.DataPoolMapper">
+	
+   <select id="selectListByCondition" parameterType="java.util.Map" resultType="java.util.Map">
+   		SELECT
+   			#{datasetKey} AS dataset_sys_key,
+			#{datasetName} AS db_name,
+			CURRENT_SCHEMA () AS db_schema,
+			total_proj,
+			maintenance_proj,
+			process_info AS tran_period,
+			period_length,
+			s.* 
+		FROM
+			(
+		SELECT COUNT
+			( * ) AS total_proj,
+			COUNT ( M.project_id ) AS maintenance_proj 
+		FROM
+			project
+			P LEFT OUTER JOIN ( SELECT DISTINCT project_id FROM project_param_arc ) M ON P.project_id = M.project_id 
+			)
+			T LEFT OUTER JOIN (
+		SELECT
+			process_info,
+		CASE
+			
+			WHEN period_weeks IS NULL THEN
+			process_info ELSE period_weeks || ' week' ||
+		CASE
+			
+			WHEN period_weeks = 1 THEN
+			'' ELSE's' 
+		END 
+			END AS period_length 
+		FROM
+			(
+			SELECT
+				process_info,
+			CASE
+					
+					WHEN LENGTH ( process_info ) = 23 THEN
+					round((
+							to_date( substr( process_info, 13 ), 'dd Mon yyyy' ) - to_date( substr( process_info, 1, 11 ), 'dd Mon yyyy' ) + 1 
+							) / 7,
+						0 
+					) 
+				END AS period_weeks 
+			FROM
+				process_control 
+			WHERE
+				process_name = 'FULL_TRAN_PERIOD' 
+			) tp 
+			) tp ON 1 = 1
+			LEFT OUTER JOIN (
+			SELECT MAX
+				( CASE WHEN param_name = 'Total Spend' THEN num_val END ) AS total_spend,
+				MAX ( CASE WHEN param_name = 'Total Units' THEN num_val END ) AS total_quantity,
+				MAX ( CASE WHEN param_name = 'Total Transactions' THEN num_val END ) AS total_tran,
+				MAX ( CASE WHEN param_name = 'Total Customers' THEN num_val END ) AS total_cust,
+				MAX ( CASE WHEN param_name = 'Total Rows' THEN num_val END ) AS total_tran_row 
+			FROM
+				project_param 
+			WHERE
+				project_id = 999999 
+			AND param_type = 'POOL_SUM' 
+		) s ON 1 = 1
+
+   </select>
+</mapper>

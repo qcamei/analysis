@@ -1,0 +1,54 @@
+<el-container class="content">
+  <el-header>
+   	<el-col :span="24" class="line">
+		<el-row>
+		  <el-col :span="2" style="width:auto;"><strong class="title" style="color: #21b799;cursor: pointer;width:auto;padding:0 10px;">仪表盘</strong>/
+		  </el-col>
+		  <el-col :span="17">
+		  	<span class="title" style="width:auto;padding:0 30px 0 10px;">沙盘名：{{projectName}}</span>
+		  	
+		  	<span class="title" style="width:auto;padding:0 30px;">渠道：{{channel}}</span>
+		  	
+		  	<span class="title" style="width:auto;padding:0 30px;">时间区间：{{period}}</span>
+		  	
+		  </el-col>
+		</el-row>
+	</el-col>
+   </el-header>
+   <el-main style="background: #8f8f8f;" id="mydetail">
+   		<el-row>
+		  <el-col :span="24">
+		  	<el-container style="background:#fff;">
+		  		 
+		  		<el-header>
+		  			<div style="padding: 8px 16px;background-color: #e2e2e0;height:2em;">
+		  				<button class="layui-btn  layui-btn-primary" :class="tabs==11?'site-tabs-active':''"" @click.prevent="changeTabs(11)">沙盘摘要</button>
+		  				<button class="layui-btn  layui-btn-primary" :class="tabs==22?'site-tabs-active':''" @click.prevent="changeTabs(22)">商品家族分析</button>
+		  				<button class="layui-btn  layui-btn-primary" :class="tabs==33?'site-tabs-active':''" @click.prevent="changeTabs(33)">主题分析</button>
+		  				<button class="layui-btn  layui-btn-primary" :class="tabs==44?'site-tabs-active':''" @click.prevent="changeTabs(44)">市场细分</button>
+		  			</div>
+		  		</el-header>
+		  		<!--
+		  		<el-main>
+		  			<transition name="fade" mode="out-in">
+						<router-view ref="content" @startJQueue="checkJQueue"></router-view>
+					</transition>
+		  		</el-main>
+		  		-->
+		  		<el-main v-show="activeName=='first'">
+				  	<router-view  ref="ybp" @startJQueue="checkJQueue"></router-view>
+		  		</el-main>
+		  		<el-main v-show="activeName=='second'">
+				  	<router-view  name="family_detail" ref="family" @themeList="themeList"  @startJQueue="checkJQueue"></router-view>
+		  		</el-main>
+		  		<el-main v-show="activeName=='third'">
+				  	<router-view :layid="tabs" name="theme_detail"  ref="theme" @startJQueue="checkJQueue"></router-view>
+		  		</el-main>
+		  		<el-main v-show="activeName=='fourth'">
+				  	<router-view  name="segment_detail"  ref="segment" @startJQueue="checkJQueue"></router-view>
+		  		</el-main>
+		  	</el-container>
+		  </el-col>
+		</el-row>
+   </el-main>
+</el-container>

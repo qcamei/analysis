@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.analysis.postgres.mapper.FamilyMapper">
+	
+   <select id="getFamilys" parameterType="int" resultType="java.util.Map">
+		SELECT p.prod_sys_key,p.prod_desc,p.prod_code,CASE WHEN t.table_name IS NULL THEN 0 ELSE 1 END matrix_table
+		FROM product_cat p
+		LEFT OUTER JOIN information_schema.tables t ON t.table_schema=current_schema() AND lower(t.table_name)='prod_matrix_'||#{projectId}||'_'||p.prod_sys_key
+		WHERE p.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId})
+		ORDER BY p.prod_desc
+	</select>
+	
+	<select id="getDigitalList" parameterType="int" resultType="java.util.Map">
+		SELECT DISTINCT s.param_name AS solution_name,s.param_key AS solution_key,s.parent_key AS deptID,d.prod_code AS dept_code,s.num_val AS num_clusters
+		,s.param_name||'('||CASE WHEN s.num_val IS NULL THEN 'Modified' ELSE ''||s.num_val END||')' AS solution_name2
+		,CASE WHEN f.used_groups IS NULL THEN 0 ELSE 1 END AS used_flag
+		FROM project_param s
+		LEFT OUTER JOIN (
+		SELECT char_val AS used_groups
+		FROM project_param
+		WHERE project_id=#{projectId} AND param_type='FACTOR_CORR'
+		) f ON ','||f.used_groups||',' LIKE '%,'||s.param_key||',%'
+		INNER JOIN product_cat d ON d.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId}) AND d.prod_sys_key=s.parent_key
+		WHERE s.project_id=#{projectId} AND s.param_type='CLUSTER_SOLUTION'
+		ORDER BY solution_name
+	</select>
+	
+	<select id="getTopGoods" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT p.prod_code,p.prod_desc,s.total_cust,s.total_spend,s.total_quantity
+		,CASE WHEN s.total_quantity=0 THEN 0 ELSE round(s.total_spend/s.total_quantity,2) END AS avg_price
+		FROM product_summary s
+		INNER JOIN product_sku p ON p.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId}) AND s.prod_sys_key=p.prod_sys_key
+		WHERE s.proj=#{projectId} AND s.dept_sys_key=#{parentKey} and s.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId})
+		ORDER BY s.total_cust DESC
+		LIMIT 20
+	</select>
+	
+	<select id="getDistributionList" parameterType="int" resultType="java.util.Map">
+		<![CDATA[
+				SELECT t.*,CASE interval_type WHEN -999 THEN 'Excluded' WHEN -99 THEN '< MIN' WHEN 200 THEN '> MAX' WHEN 1 THEN perc||'-'||(perc+10) ELSE ''||perc END AS perc_desc
+				FROM (
+				SELECT CASE interval_type WHEN 1 THEN (order_ind*10/num_sku)*10 ELSE interval_type END AS perc
+				,interval_type
+				,count(*) AS num_prod,min(total_cust) AS min_stats,max(total_cust) AS max_stats,round(sum(total_spend)*100.0/overall_spend,4) AS perc_spend
+				FROM (
+				SELECT p.*
+				,sum(total_spend) OVER () AS overall_spend
+				,count(CASE WHEN interval_type=1 THEN 1 END) OVER () AS num_sku
+				,rank() OVER (PARTITION BY interval_type ORDER BY total_cust)-1 AS order_ind
+				FROM (
+				SELECT p.*,CASE WHEN total_cust<0 THEN -999 WHEN total_cust<100.0 THEN -99 ELSE 1 END AS interval_type
+				FROM product_summary_${projectId} p
+				WHERE proj=#{projectId} AND dept_sys_key=#{parentKey} and prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId})
+				) p
+				)t
+				GROUP BY 1,2,overall_spend
+				) t
+				ORDER BY perc
+				
+  		]]>
+	</select>
+	<select id="getSolutionsList" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		WITH ttt AS (
+		SELECT t.id,t.g,round(t.pseudot2,4) pseudot2,CASE WHEN tp.pseudot2=0 THEN 100 ELSE (tp.pseudot2-t.pseudot2)/tp.pseudot2 END AS diff
+		,LEAST(ceil(t.pseudot2*100/LEAST(GREATEST(max(t.pseudot2) OVER (),1),800)),110) AS pseudot2_ind
+		,tp.pseudot2-t.pseudot2 AS abs_diff
+		FROM prod_cluster t
+		LEFT OUTER JOIN prod_cluster tp
+		ON tp.proj=t.proj AND tp.cluster_type=t.cluster_type AND tp.parent_key=t.parent_key AND tp.g+1=t.g
+		WHERE t.proj=#{projectId} AND t.cluster_type='DEPT' AND t.parent_key=#{parentKey} AND t.g BETWEEN 2 AND 33
+		)
+		SELECT ttt.*,CASE WHEN abs_diff>diff_median THEN 1 ELSE 0 END AS highlight_ind
+		FROM ttt
+		CROSS JOIN (
+		SELECT min(abs_diff) AS diff_median
+		FROM (
+		SELECT abs_diff,row_number() OVER (ORDER BY abs_diff) AS order_ind,count(*) OVER () AS total_row
+		FROM ttt t
+		WHERE abs_diff>0
+		) t
+		WHERE order_ind>=total_row/2
+		) t
+		ORDER BY g
+		]]>
+	</select>
+	
+	<select id="getSolutionsList2" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT cluster_key,group_name,num_prod,spend
+		,CASE WHEN total_prod!=0 THEN round(num_prod*100.0/total_prod,#{projectId}) ELSE 0 END AS perc_prod
+		,CASE WHEN total_spend!=0 THEN round(spend*100.0/total_spend,#{projectId}) ELSE 0 END AS perc_spend
+		FROM (
+		SELECT t.*,sum(num_prod) OVER () AS total_prod,sum(spend) OVER () AS total_spend
+		FROM (
+		SELECT t.cluster_key,t.group_name
+		,count(sku) AS num_prod,sum(ps.total_spend) AS spend
+		FROM (
+		SELECT c.group_name,c.cluster_key,CASE WHEN c.n1=1 THEN c.cluster_key ELSE t.sku END AS sku
+		FROM (
+		SELECT t.cluster_key,t.n1,COALESCE(d.prod_code||'.'||l.g,p.prod_code,'Gp '||t.cluster_key) AS group_name
+		FROM (
+		SELECT cl1 AS cluster_key,n1 FROM prod_cluster WHERE proj=#{projectId} AND cluster_type='DEPT' AND parent_key=#{parentKey} AND g<#{g}
+		UNION
+		SELECT cl2,n2 FROM prod_cluster WHERE proj=#{projectId} AND cluster_type='DEPT' AND parent_key=#{parentKey} AND g<#{g}
+		) t
+		INNER JOIN product_cat d ON d.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId}) AND d.prod_sys_key=#{parentKey}
+		LEFT OUTER JOIN product_sku p ON p.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId}) AND p.prod_sys_key=t.cluster_key AND t.n1=1
+		LEFT OUTER JOIN prod_cluster l ON l.proj=#{projectId} AND l.cluster_type='DEPT' AND l.parent_key=#{parentKey} AND l.id=t.cluster_key
+		WHERE t.cluster_key NOT IN (SELECT id FROM prod_cluster WHERE proj=#{projectId}  AND cluster_type='DEPT' AND parent_key=#{parentKey} AND g<#{g})
+		AND (t.n1=1 OR (t.n1>1 AND l.id IS NOT NULL))
+		) c 
+		LEFT OUTER JOIN prod_cluster_sku_${projectId} t ON t.proj=#{projectId} AND c.cluster_key=t.cluster_key AND c.n1>1 AND t.dept=#{parentKey}
+		) t
+		LEFT OUTER JOIN product_summary_${projectId} ps ON ps.proj=#{projectId} AND ps.prod_sys_key=t.sku
+		GROUP BY t.cluster_key,group_name
+		)t)t ORDER BY num_prod DESC,spend DESC
+		]]>
+	</select>
+	
+	<select id="getSolutionsList3" parameterType="java.util.Map" resultType="java.util.Map">
+		<![CDATA[
+		SELECT group_name,t.group_key,num_prod,display_flag,dept_sys_key
+		,CASE WHEN total_spend!=0 THEN round(spend*100.0/total_spend,4) ELSE 0 END AS perc_spend
+		,CASE WHEN asso.group_key IS NULL THEN 0 ELSE 1 END AS asso_flag,0 AS asso_group
+		FROM (
+		SELECT t.*,sum(spend) OVER () AS total_spend
+		FROM (
+		SELECT g.group_name,g.group_key,g.display_flag,COALESCE(ps.dept_sys_key,ps2.dept_sys_key) AS dept_sys_key
+		,count(COALESCE(p.sku,ps.prod_sys_key,ps2.prod_sys_key)) AS num_prod
+		,COALESCE(sum(ps.total_spend),0)+COALESCE(sum(ps2.total_spend),0) AS spend
+		FROM prod_clustered_group g
+		LEFT OUTER JOIN prod_cluster_sku p ON p.proj=g.proj AND p.cluster_key=g.group_key AND g.num_prod>1
+		LEFT OUTER JOIN product_summary ps ON ps.proj=g.proj AND g.num_prod>1 AND ps.prod_sys_key=p.sku
+		LEFT OUTER JOIN product_summary ps2 ON ps2.proj=g.proj AND g.num_prod=1 AND g.prev_group_key=ps2.prod_sys_key
+		WHERE g.proj=#{projectId} AND g.display_flag IN (-1,1)
+		AND g.solution_key=#{solutionKey}
+		GROUP BY g.group_name,g.group_key,g.display_flag,COALESCE(ps.dept_sys_key,ps2.dept_sys_key)
+		)t )t
+		LEFT OUTER JOIN (
+		SELECT group_key
+		FROM prod_associated_group
+		WHERE proj=#{projectId} AND solution_key=#{solutionKey} GROUP BY 1
+		) asso ON asso.group_key=t.group_key
+		ORDER BY num_prod DESC,perc_spend DESC
+		]]>
+	</select>
+	
+	
+	<select id="getSolutionsList4" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT t.*,CASE WHEN overall_spend!=0 THEN round(total_spend*100.0/overall_spend,4) END AS perc_spend
+		FROM (SELECT p.prod_desc,p.prod_code,p.prod_sys_key,pm.total_cust,pm.total_spend
+		<if test="solutionKey !=null and solutionKey!=0">
+		,g.group_name AS prev_group
+		</if>
+		,CASE WHEN pm.total_quantity=0 THEN 0 ELSE round(pm.total_spend/pm.total_quantity,2) END AS avg_price
+		,sum(pm.total_spend) OVER () AS overall_spend
+		FROM prod_cluster_sku_${projectId} c
+		INNER JOIN product_sku p ON p.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId}) AND c.sku=p.prod_sys_key
+		<if test="solutionKey !=null and solutionKey!=0">
+		LEFT OUTER JOIN prod_clustered_group g ON g.proj=c.proj AND c.prev_cluster=g.group_key AND g.solution_key=#{solutionKey}
+		</if>
+		LEFT OUTER JOIN product_summary_${projectId} pm ON pm.proj=c.proj AND c.sku=pm.prod_sys_key
+		WHERE c.proj=#{projectId} AND c.cluster_key= #{groupKey}
+		) t ORDER BY total_spend DESC NULLS LAST
+	</select>
+	
+	<select id="getClusterProjectParam" parameterType="java.util.Map" resultType="int">
+		SELECT COUNT(1) FROM project_param WHERE project_id= #{projectId} AND param_type='CLUSTER_SOLUTION' AND upper(param_name)=upper(#{name}) 
+	</select>
+	
+	<select id="getClusterKeySeq" resultType="int">
+		SELECT nextval('cluster_key_seq')
+	</select>
+	
+	<insert id="saveClusterProjectParam" parameterType="java.util.Map">
+		INSERT INTO project_param(project_id,param_type,param_key,parent_key,param_name,num_val,created_date,created_by)
+		VALUES(#{projectId},'CLUSTER_SOLUTION',#{clusterKey},#{deptKey},#{name},#{numCluster},now(),#{username})
+	</insert>
+	
+	<insert id="saveProdClusteredGroup" parameterType="java.util.Map">
+		<![CDATA[
+		INSERT INTO prod_clustered_group(proj,group_name,group_key,prev_group_key,solution_key,display_flag,num_prod,w,created_date,created_by)
+		SELECT #{projectId},COALESCE(d.prod_code||'.'||c.g,p.prod_code,''||t.cluster_key),nextval('cluster_key_seq'),cluster_key,#{clusterKey},1,COALESCE(c.n,1),COALESCE(c.w,0),now(), #{username} 
+		FROM (
+		  SELECT cl1 AS cluster_key,n1 FROM prod_cluster WHERE proj=#{projectId} AND cluster_type='DEPT' AND parent_key=#{deptKey} AND g<#{numCluster}
+		  UNION
+		  SELECT cl2,n2 FROM prod_cluster WHERE proj=#{projectId} AND cluster_type='DEPT' AND parent_key=#{deptKey} AND g<#{numCluster}
+		) t
+		INNER JOIN product_cat d ON d.prod_type= (SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId}) AND d.prod_sys_key=#{deptKey}
+		LEFT OUTER JOIN prod_cluster c ON c.proj=#{projectId} AND c.cluster_type='DEPT' AND c.parent_key=#{deptKey} AND c.id=t.cluster_key
+		LEFT OUTER JOIN product_sku p ON p.prod_type= (SELECT char_val FROM project_param WHERE param_name = 'typeSKU' AND project_id = #{projectId}) AND p.prod_sys_key=t.cluster_key AND t.n1=1
+		WHERE t.cluster_key NOT IN (SELECT id FROM prod_cluster WHERE proj=#{projectId} AND cluster_type='DEPT' AND parent_key=#{deptKey} AND g<#{numCluster})
+		  AND (t.n1=1 OR (t.n1>1 AND c.id IS NOT NULL))
+		]]>
+	</insert>
+	
+	<insert id="saveProdClusterSku" parameterType="java.util.Map">
+		INSERT INTO  prod_cluster_sku_${projectId} (proj,dept,cluster_key,sku,prev_cluster,saved_cluster)
+		SELECT s.proj,s.dept,g.group_key,s.sku,s.cluster_key,1
+		FROM prod_cluster_sku s
+		INNER JOIN prod_clustered_group g ON s.proj=g.proj AND s.cluster_key=g.prev_group_key
+		WHERE s.proj=#{projectId} AND g.solution_key=#{clusterKey}
+	</insert>
+	
+	<insert id="saveClusterProjectParam2" parameterType="java.util.Map">
+		INSERT INTO project_param(project_id,param_type,parent_key,param_name,char_val,num_val,date_val,created_date,created_by)
+		SELECT #{projectId},'CLUSTER_SLN_PARAM',#{clusterKey},param_name,char_val,num_val,date_val,now(),#{username}
+		FROM project_param WHERE project_id=#{projectId} AND param_type='CLUSTER_PARAM' AND parent_key=#{deptKey}
+	</insert>
+	
+	
+	<delete id="deleteClusterProjectParam" parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id= #{projectId} AND param_type = 'CLUSTER_SOLUTION' AND param_key = #{solutionKey} 
+	</delete>
+	
+	<insert id="deleteProdClusteredGroup" parameterType="java.util.Map">
+		DELETE FROM prod_clustered_group WHERE proj=#{projectId} AND solution_key=#{solutionKey}
+	</insert>
+	
+	<insert id="deleteProdClusterSku" parameterType="java.util.Map">
+		DELETE FROM prod_cluster_sku_${projectId} WHERE proj=#{projectId} AND cluster_key IN (
+		SELECT g.group_key FROM prod_clustered_group g
+		LEFT OUTER JOIN (SELECT DISTINCT group_key FROM prod_clustered_group WHERE proj=#{projectId} AND solution_key!=#{solutionKey}) e ON e.group_key=g.group_key
+		WHERE g.proj=#{projectId} AND g.solution_key=#{solutionKey} )
+	</insert>
+	
+	<insert id="deleteProdClusterSku2" parameterType="java.util.Map">
+		DELETE FROM prod_cluster_sku WHERE proj=#{projectId} AND cluster_key IN (
+		SELECT g.group_key FROM prod_clustered_group g
+		LEFT OUTER JOIN (SELECT DISTINCT group_key FROM prod_clustered_group WHERE proj=#{projectId} AND solution_key!=#{solutionKey}) e ON e.group_key=g.group_key
+		WHERE g.proj=#{projectId} AND g.solution_key=#{solutionKey} )
+	</insert>
+	
+	<insert id="deleteClusterProjectParam2" parameterType="java.util.Map">
+		DELETE FROM project_param WHERE project_id= #{projectId} AND param_type = 'CLUSTER_SLN_PARAM' AND parent_key = #{solutionKey}
+	</insert>
+	
+	
+	<update id="updateSolutionName" parameterType="java.util.Map">
+		UPDATE project_param SET param_name = #{name} WHERE project_id = #{projectId} and param_type='CLUSTER_SOLUTION' and param_key = #{solutionKey}
+	</update>
+	
+	<update id="updateGroupName" parameterType="java.util.Map">
+		UPDATE prod_clustered_group SET group_name=#{name} WHERE proj=#{projectId} AND group_key=#{groupKey}
+	</update>
+	
+</mapper>

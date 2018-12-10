@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	 <property name="log.file" value="D:/java/logs/analysis.log" />
+	<!--<property name="log.file" value="/java/logs/cs.log" />-->
+	<property name="logPattern"
+		value="%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n" />
+	<appender name="FILE"
+		class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${log.file}</file>
+		<rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<!-- daily rollover -->
+			<fileNamePattern>${log.file}.%d{yyyy-MM-dd}.log.zip
+            </fileNamePattern>
+			<!-- keep 30 days' worth of history capped at 3GB total size -->
+			<maxHistory>30</maxHistory>
+			<totalSizeCap>1GB</totalSizeCap>
+		</rollingPolicy>
+		<encoder>
+			<pattern>${logPattern}</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+	</appender>
+	<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+            <pattern>${logPattern}</pattern>
+        </encoder>
+	</appender>
+
+	<!-- 设置日志级别 -->
+	<!-- <logger name="org.springframework.beans.factory.support.DefaultListableBeanFactory" level="error" /> -->
+
+	<root level="debug">
+	  <appender-ref ref="STDOUT" />
+	  <appender-ref ref="FILE" />
+	</root>
+</configuration>

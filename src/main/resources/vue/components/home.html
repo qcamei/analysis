@@ -1,0 +1,101 @@
+<el-row ref="home" class="container">
+	<el-col :span="24" class="header">
+		<el-col :span="10" class="logo" :class="isCollapse?'logo-collapse-width':'logo-width'">
+			<i class="fa fa-th"></i>
+			{{isCollapse?'':sysName}}
+		</el-col>
+		<el-col :span="10">
+			<div class="tools" @click.prevent="collapse">
+				<a href="javascript:;"  title="侧边伸缩">
+					<i class="layui-icon layui-icon-shrink-right"></i>
+				</a>	
+			</div>
+		</el-col>
+		<el-col :span="4" class="userinfo">
+			<el-row>
+			  <el-col :span="4" center><a target="view_window" href="https://v8.mycustomerstyles.com/Segment/ZincSegmentation.pdf"  title="PDF文档"><i class="layui-icon layui-icon-website"></i></a></el-col>
+			  <el-col :span="4" center><a href="javascript:;" @click.prevent="help" title="帮助"><i class="layui-icon layui-icon-help"></i></a></el-col>
+			  <el-col :span="4" center>
+			  	<el-badge :value="jobnum" class="item">
+			  		<el-popover placement="bottom" width="680" trigger="click" popper-class="mywin">
+			  			<el-tabs v-model="activeName">
+						    <el-tab-pane label="RUNNING TASKS" name="runningTasks">
+						    	<el-table :data="runningList">
+								    <el-table-column  property="job_id" label="ID"></el-table-column>
+								    <el-table-column width="180" property="process_desc" label="Task"></el-table-column>
+								    <el-table-column  property="process_status" label="Status"></el-table-column>
+								    <el-table-column  property="start_time" label="Started"></el-table-column>
+								    <el-table-column  property="arc_time" label="Finished"></el-table-column>
+								    <el-table-column  property="inerval_time" label="Duration"></el-table-column>
+								</el-table>
+						    </el-tab-pane>
+						    <el-tab-pane label="FINISHED TASKS" name="finishedTasks">
+						    	<el-table :data="finishedList">
+								    <el-table-column  property="job_id" label="ID"></el-table-column>
+								    <el-table-column width="180" property="process_desc" label="Task"></el-table-column>
+								    <el-table-column  property="process_status" label="Status"></el-table-column>
+								    <el-table-column  property="start_time" label="Started"></el-table-column>
+								    <el-table-column  property="arc_time" label="Finished"></el-table-column>
+								    <el-table-column  property="inerval_time" label="Duration"></el-table-column>
+								</el-table>
+						    </el-tab-pane>
+					    </el-tabs>
+			  			
+						<a href="javascript:;" slot="reference" title="工作台" @click.prevent="workbench" ><i class="layui-icon layui-icon-set" :class="rotate"></i></a>
+					</el-popover>
+				</el-badge>
+			  </el-col>
+			  <el-col :span="4" v-show="screen=='full'" center><a href="javascript:void(0);"><i class="layui-icon layui-icon-screen-full" @click.prevent="fullScreen"></i></a></el-col>
+			  <el-col :span="4" v-show="screen=='exit'" center><a href="javascript:void(0);"><i class="layui-icon layui-icon-screen-restore" @click.prevent="exitScreen"></i></a></el-col>
+			  <el-col :span="8" center>
+			  	<el-row>
+			  		<el-col :span="24">
+					  	<el-dropdown trigger="hover">
+							
+							<span class="el-dropdown-link userinfo-inner"><i class="fa fa-user-circle" style="font-size:1.5em;"></i>&nbsp;&nbsp;<i style="color: #3d3d3d;font-size:16px;font-weight: 500">{{username}}</i></span>
+							<el-dropdown-menu slot="dropdown">
+								<el-dropdown-item>账号设置</el-dropdown-item>
+								<el-dropdown-item divided @click.native="logout">退出登录</el-dropdown-item>
+							</el-dropdown-menu>
+						</el-dropdown>
+					</el-col>
+					
+				</el-row>
+			  </el-col>
+			  
+			  <span class="layui-nav-bar" style="left: 140px; top: 48px; width: 0px; opacity: 0;"></span>
+			</el-row>
+		</el-col>
+	</el-col>
+	<el-col :span="24" class="main">
+		<aside>
+			<el-menu :default-active="defaultMenu"  router background-color="#382237" active-text-color="#fff" text-color="#b5adb5" class="el-menu-vertical-demo" @select="selectMenu"  :collapse="isCollapse">
+			  <template v-for="item in menus">
+			  <el-submenu  v-if="item.children.length>0" :index="item.href" >
+			  	 <template slot="title">
+			      <i style="font-size:16px;" :class="item.icon"></i>
+			      <span slot="title">{{item.title}}</span>
+			     </template>
+			     <el-menu-item v-for="child in item.children" :class="defaultMenu==child.href?'is-active':''" :index="child.href">
+			     <i :class="child.icon"></i>
+			      <span slot="title">{{child.title}}</span>
+			     </el-menu-item>
+			  </el-submenu>
+			  <el-menu-item v-else :class="defaultMenu==item.href?'is-active':''" :index="item.href" >
+			    <i :class="item.icon"></i>
+			    <span slot="title">{{item.title}}</span>
+			  </el-menu-item>
+			  </template>
+			</el-menu>
+		</aside>
+		<section class="content-container" :class="isCollapse?'logo-collapse-width':'logo-width'">
+			<div class="grid-content bg-purple-light">
+				<el-col :span="24" class="content-wrapper" style="margin-top:1px">
+					<transition name="fade" mode="out-in">
+						<router-view ref="detail" @currentMenu="selectMenu" @startJQueue="checkJQueue"></router-view>
+					</transition>
+				</el-col>
+			</div>
+		</section>
+	</el-col>
+</el-row>

@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="net.mofancy.analysis.postgres.mapper.SegmentMapper">
+	
+	<select id="getSegmentList" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT COALESCE(a.param_name,round(a.num_val)||' Seg-'||pf.param_name) AS segmentation
+		,a.param_key AS segmentation_key,round(a.num_val) AS num_segment,pf.param_key AS profile_key,f.param_key AS factor_key,round(f.num_val) AS num_factor
+		,fp.select_factor,COALESCE(fp.total_cust,0) AS total_cust,COALESCE(round(sp.num_val),fp.sample_size,0) AS assigned_cust
+		,CASE WHEN arc.module_key IS NULL THEN 0 ELSE 1 END AS lock_seg
+		FROM project_param a
+		LEFT OUTER JOIN project_param sp
+		ON sp.parent_key=a.param_key AND a.project_id=sp.project_id AND sp.param_type='SEG_PARAM' AND sp.param_name='ASSIGNED_CUST'
+		INNER JOIN project_param pf
+		ON a.parent_key=pf.param_key AND a.project_id=pf.project_id AND pf.param_type='SEG_PROFILE'
+		INNER JOIN project_param f
+		ON pf.parent_key=f.param_key AND a.project_id=f.project_id AND f.param_type='FACTOR_SOLUTION'
+		LEFT OUTER JOIN (
+		SELECT parent_key,max(CASE WHEN param_name='SELECT_FACTOR' THEN char_val END) AS select_factor
+		,round(max(CASE WHEN param_name='TOTAL_CUST' THEN num_val END)) AS total_cust
+		,round(max(CASE WHEN param_name='SAMPLE_SIZE' THEN num_val END)) AS sample_size
+		FROM project_param fp
+		WHERE project_id=#{projectId} AND param_type='FACTOR_SLN_PARAM'
+		GROUP BY parent_key
+		) fp
+		ON fp.parent_key=pf.param_key
+		INNER JOIN project_param c
+		ON f.parent_key=c.param_key AND a.project_id=c.project_id AND c.param_type='FACTOR_CORR'
+		LEFT OUTER JOIN (
+		SELECT module_key
+		FROM project_param_arc 
+		WHERE module_type IN ('SEG_MAINTENANCE', 'SEG_LOCK') AND param_type='SEGMENTATION' AND project_id=#{projectId} GROUP BY 1
+		) arc
+		ON arc.module_key=''||a.param_key
+		WHERE a.param_type='SEGMENTATION' AND a.project_id=#{projectId}
+		ORDER BY a.created_date DESC;
+		
+	</select>
+	
+	<select id="getSegmentSummary"  parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT 0 AS total_flag,s.segment_ind+1 AS segment_ind,''||(s.segment_ind+1) AS segment_ind2,a.param_key AS segment_key,COALESCE(a.param_name,'Seg '||s.segment_ind) AS segment_name
+		,s.customer_count,s.spend
+		,CASE WHEN s.customer_count=0 THEN 0 ELSE round(s.spend/s.customer_count,2) END AS avg_spend
+		,CASE WHEN s.customer_count=0 THEN 0 ELSE round(s.margin/s.customer_count,2) END AS avg_margin
+		,s.avg_prod_group,s.avg_dept
+		,CASE WHEN s.customer_count=0 THEN 0 ELSE COALESCE(round(s.quantity/s.customer_count,2),0) END AS avg_quantity
+		,CASE WHEN s.customer_count=0 THEN 0 ELSE COALESCE(round(s.num_tran/s.customer_count,2),0) END AS avg_freq
+		,CASE WHEN ttl.customer_sum=0 THEN 0 ELSE round(s.customer_count*100.0/ttl.customer_sum,4) END AS customer_perc
+		,CASE WHEN ttl.spend_sum=0 THEN 0 ELSE round(s.spend*100.0/ttl.spend_sum,4) END AS spend_perc
+		${sqlStr1} ${sqlStr2}
+		FROM customer_segment_summary s
+		CROSS JOIN (
+		SELECT sum(s.customer_count) AS customer_sum,sum(s.spend) AS spend_sum,sum(s.factor_sum) AS factor_sum
+		${sqlStr3}
+		FROM customer_segment_summary s
+		WHERE s.analysis_key=#{segmentationKey} AND s.proj=#{projectId}
+		) ttl
+		LEFT OUTER JOIN project_param a
+		ON a.param_type='SEGMENT_NAME' AND a.project_id=s.proj AND a.parent_key=s.analysis_key AND s.segment_ind+1=a.num_val
+		WHERE s.analysis_key=#{segmentationKey} AND s.proj=#{projectId}
+		ORDER BY total_flag,segment_ind
+	
+	</select>
+	
+	<select id="getSegmentPurchaseThemes" parameterType="java.util.Map" resultType="java.util.Map">
+		SELECT COALESCE(a.param_name,'Theme '||t.n) AS factor_name,t.n AS factor_ind,a.param_key AS factor_key
+		,CASE WHEN t.n IN (${sqlStr}) THEN 1 ELSE 0 END AS selected_flag
+		FROM (
+		WITH RECURSIVE t(n) AS (
+		VALUES (1)
+		UNION ALL
+		SELECT n+1 FROM t WHERE n&lt;#{numFactor}
+		)
+		SELECT n FROM t
+		) t
+		LEFT OUTER JOIN project_param a
+		ON a.num_val=t.n AND a.project_id=#{projectId} AND a.param_type='FACTOR_NAME'
+		AND a.parent_key=#{analysisKey} AND a.param_att='${numFactor}'
+		ORDER BY factor_ind
+	</select>
+	
+	<update id="saveSegmentName" parameterType="java.util.Map" >
+		UPDATE project_param SET param_name=#{name} WHERE project_id=#{projectId} AND param_type='SEGMENT_NAME' AND param_key=#{segmentKey};
+	</update>
+	
+	<select id="getSegmentProfile" parameterType="java.util.Map" resultType="java.util.Map">
+		WITH ttt AS (
+		SELECT dept,prod_sys_key,sum(spend) AS total_spend,sum(customer_count) total_cust
+		${sqlStr1} ${sqlStr2}
+		FROM product_segment_summary_${projectId}
+		WHERE proj=#{projectId} AND analysis_key=#{analysisKey} AND segment_ind IS NOT NULL AND summary_level=#{summaryLevel}
+		GROUP BY dept,prod_sys_key
+		ORDER BY total_spend DESC LIMIT 100
+		)
+		SELECT d.prod_desc AS dept_desc,d.prod_code AS dept_code,p.group_name AS prod_desc,p.num_prod,p.associated_flag,s.*
+		FROM (
+		SELECT s.* ${sqlStr3} ${sqlStr4}
+		FROM (
+		SELECT s.*,CASE WHEN sum_total_spend!=0 THEN round(total_spend*100.0/sum_total_spend,15) ELSE 0 END total_spend_perc
+		,CASE WHEN sum_total_cust!=0 THEN round(total_cust*100.0/sum_total_cust,15) ELSE 0 END total_cust_pene
+		${sqlStr5}
+		${sqlStr6}
+		FROM ttt s
+		CROSS JOIN (
+		SELECT sum(spend) AS sum_total_spend,sum(customer_count) sum_total_cust
+		${sqlStr7}
+		${sqlStr8}
+		FROM customer_segment_summary 
+		WHERE proj=#{projectId} AND analysis_key=#{analysisKey} AND num_segment=10
+		) ttl
+		) s
+		) s
+		INNER JOIN product_cat d ON d.prod_type=(SELECT char_val FROM project_param WHERE param_name = 'typeDept' AND project_id = #{projectId}) AND d.prod_sys_key=s.dept
+		INNER JOIN (
+		SELECT COALESCE(a.associated_group_key,g.group_key) AS group_key,COALESCE('*'||a.associated_group_name,g.group_name) AS group_name
+		,CASE WHEN a.associated_group_key IS NULL THEN 0 ELSE 1 END AS associated_flag
+		,sum(g.num_prod) AS num_prod
+		FROM prod_clustered_group g
+		LEFT OUTER JOIN prod_associated_group a
+		ON a.solution_key=g.solution_key AND a.proj=g.proj AND a.group_key=g.group_key
+		WHERE g.proj=#{projectId} AND g.display_flag=1 AND g.solution_key=#{solutionKey}
+		GROUP BY 1,2,3
+		) p ON p.group_key=s.prod_sys_key
+		ORDER BY total_spend DESC;
+	
+	</select>
+</mapper>

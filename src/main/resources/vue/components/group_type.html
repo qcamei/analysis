@@ -1,0 +1,118 @@
+<div style="background:#f2f2f2;box-shadow: 0 1px 2px 0 rgba(0,0,0,.05);">
+	<el-col :span="24" class="line" style="margin-bottom: 7.5px;">
+		<el-row>
+		  <el-col :span="17"><strong class="title">角色类型管理</strong></el-col>
+		  
+		  <el-col :span="6">
+			  <el-input placeholder="搜索..." v-model="keyword" class="input-with-select" >
+			  </el-input>
+		  </el-col>
+		  <el-col :span="1">
+		  	<i class="fa fa-search-plus" @click.prevent="search"></i>
+		  </el-col>
+		</el-row>
+	</el-col>
+	<el-col :span="24" style="background:#fff;">
+		<el-col :span="18" >
+		<div class="layui-card-header">
+			<el-button @click.prevent="handleAdd" type="primary" style="height: 30px; line-height: 30px;background-color: #009688; border-color: #009688;border-radius:2px;padding:0 18px;">创建角色类型</el-button>
+		</div>
+		</el-col>
+	</el-col>
+	
+	<el-col :span="24" id="menu" style="background:#fff;">
+		<el-table
+		    ref="table"
+			border
+			default-expand-all
+		    :data="tableData"
+		    >
+		    <el-table-column label="#" align="center"
+		      type="index" width="50">
+		    </el-table-column>
+		    <el-table-column
+		      label="编码"
+		      prop="code">
+		    </el-table-column>
+		    <el-table-column
+		      label="类型名称"
+		      prop="name"
+		      >
+		    </el-table-column>
+		    <el-table-column
+		      label="描述"
+		      prop="description">
+		    </el-table-column>
+		    <el-table-column
+		      label="最后更新时间"
+		      align="center"
+		      prop="updTime">
+		    </el-table-column>
+		    <el-table-column
+		      label="最后更新人"
+		      prop="updName">
+		    </el-table-column>
+		    <el-table-column label="操作" align="center" width="200">
+		      <template slot-scope="scope">
+		        <el-button style="padding: 3px 8px;" size="mini" @click="handleEdit(scope.$index, scope.row)">编辑</el-button>
+		        <el-button style="padding: 3px 8px;" size="mini" type="danger">删除</el-button>
+		        <el-button v-show="scope.row.status===null" style="padding: 3px 8px;" size="mini" type="success">启用</el-button>
+		        <el-button style="padding: 3px 8px;" v-show="scope.row.status!==null" size="mini" type="danger">停用</el-button>
+		      </template>
+		    </el-table-column>
+		  </el-table>
+	</el-col>
+	
+	
+	<el-dialog title="编辑角色类型" :visible.sync="editUserVisible" width="60%">
+	  <el-form label-width="180px" size="mini" style="margin-top:1em;">
+	  <el-form-item label="编码" >
+	      <el-input v-model="form.username" disabled style="width: 350px;" placeholder="账号" ></el-input>
+	  </el-form-item>
+	  <el-form-item label="类型名称" >
+	    <el-input v-model="form.name" style="width: 350px;" placeholder="姓名"></el-input>
+	  </el-form-item>
+	  <el-form-item label="是否有效" >
+	      <el-switch
+			  style="display: block"
+			  v-model="form.status"
+			  active-color="#13ce66"
+			  inactive-color="#ff4949">
+			</el-switch>
+	  </el-form-item>
+	  <el-form-item label="描述" >
+	      <el-input v-model="form.description" style="width: 350px;" type="textarea" placeholder="描述" ></el-input>
+	  </el-form-item>
+	</el-form>
+	<span slot="footer" class="dialog-footer">
+	    <el-button @click="editUserVisible = false">取 消</el-button>
+	    <el-button type="primary" @click="editUserInfo">保存</el-button>
+	 </span>
+	</el-dialog>
+	
+	<el-dialog title="创建角色类型" :visible.sync="addUserVisible" width="60%">
+	  <el-form label-width="180px" size="mini" style="margin-top:1em;">
+	  <el-form-item label="编码" >
+	      <el-input v-model="form.username" disabled style="width: 350px;" placeholder="账号" ></el-input>
+	  </el-form-item>
+	  <el-form-item label="类型名称" >
+	    <el-input v-model="form.name" style="width: 350px;" placeholder="姓名"></el-input>
+	  </el-form-item>
+	  <el-form-item label="是否有效" >
+	      <el-switch
+			  style="display: block"
+			  v-model="form.status"
+			  active-color="#13ce66"
+			  inactive-color="#ff4949">
+			</el-switch>
+	  </el-form-item>
+	  <el-form-item label="描述" >
+	      <el-input v-model="form.description" style="width: 350px;" type="textarea" placeholder="描述" ></el-input>
+	  </el-form-item>
+	</el-form>
+	<span slot="footer" class="dialog-footer">
+	    <el-button @click="addUserVisible = false">取 消</el-button>
+	    <el-button type="primary" @click="addUserInfo">保存</el-button>
+	 </span>
+	</el-dialog>
+</div>

@@ -1,0 +1,135 @@
+<div style="background:#f2f2f2;box-shadow: 0 1px 2px 0 rgba(0,0,0,.05);">
+	<el-col :span="24" class="line" style="margin-bottom: 7.5px;">
+		<el-row>
+		  <el-col :span="17"><strong class="title">菜单管理</strong></el-col>
+		  
+		  <el-col :span="6">
+			  <el-input placeholder="搜索..." v-model="projectName" class="input-with-select" >
+			  </el-input>
+		  </el-col>
+		  <el-col :span="1">
+		  	<i class="fa fa-search-plus" @click.prevent="search"></i>
+		  </el-col>
+		</el-row>
+	</el-col>
+	
+	<el-col :span="24" id="menu" style="background:#fff;">
+		<el-table
+		    ref="table"
+			border
+			default-expand-all
+		    :data="tableData"
+		    :row-style="rowStyle"
+		    >
+		    <el-table-column label="#" align="center"
+		      type="index" width="50">
+		    </el-table-column>
+		    <el-table-column
+		      label="菜单名称"
+		      align="left"
+		      prop="title"
+		      >
+		      <template slot-scope="scope">
+		        <i  v-show="!scope.row.isleaf" @click="handleCheck(scope.row)" class="el-icon" :class="scope.row.expand?'el-icon-caret-right':'el-icon-caret-bottom'"></i>
+		        <i :style="!scope.row.isleaf?'':scope.row.expand===undefined?'margin-left:28px':'margin-left:18px'" :class="scope.row.icon"></i>
+		        <span>{{ scope.row.title }}</span>
+		      </template>
+		    </el-table-column>
+		    <el-table-column
+		      label="编码"
+		      prop="code">
+		    </el-table-column>
+		    <el-table-column
+		      label="图标"
+		      prop="icon">
+		       <template slot-scope="scope">
+		      	{{scope.row.icon}}
+		      </template>
+		    </el-table-column>
+		    <el-table-column
+		      label="链接地址"
+		      prop="href">
+		    </el-table-column>
+		    <el-table-column
+		      label="是否有效"
+		      width="100"
+		      align="center"
+		      prop="enabled">
+		      <template slot-scope="scope">
+			  	{{scope.row.enabled?'是':'否'}}    
+			  </template>
+		    </el-table-column>
+		    <el-table-column
+		      label="描述"
+		      prop="description">
+		    </el-table-column>
+		    <el-table-column label="操作" align="center" width="150">
+		      <template slot-scope="scope">
+		        <el-button style="padding: 3px 8px;" size="mini" @click="handleEdit(scope.$index, scope.row)">编辑</el-button>
+		        <el-button v-show="scope.row.enabled==false" style="padding: 3px 8px;" size="mini" type="success">启用</el-button>
+		        <el-button style="padding: 3px 8px;" v-show="scope.row.enabled==true" size="mini" type="danger">停用</el-button>
+		      </template>
+		    </el-table-column>
+		  </el-table>
+	</el-col>
+	
+	
+	<el-dialog title="编辑菜单" :visible.sync="editMenuVisible" width="60%">
+	  <el-container>
+	  	<el-aside width="50%">
+	  		<el-form label-width="180px" size="mini" style="margin-top:1em;">
+			  <el-form-item label="菜单名称" >
+			    <el-input v-model="form.title" style="width: 350px;" placeholder="菜单名称"></el-input>
+			  </el-form-item>
+			  <el-form-item label="编码" >
+			      <el-input v-model="form.code" disabled style="width: 350px;" placeholder="编码" ></el-input>
+			  </el-form-item>
+			  <el-form-item label="图标" >
+			      <el-input v-model="form.icon" style="width: 350px;" placeholder="图标" ></el-input>
+			  </el-form-item>
+			  <el-form-item label="链接地址" >
+			      <el-input v-model="form.href" disabled style="width: 350px;" placeholder="链接地址" ></el-input>
+			  </el-form-item>
+			  <el-form-item label="是否有效" >
+			      <el-switch
+					  style="display: block"
+					  v-model="form.enabled"
+					  active-color="#13ce66"
+					  inactive-color="#ff4949">
+					</el-switch>
+			  </el-form-item>
+			  <el-form-item label="描述" >
+			      <el-input v-model="form.description" style="width: 350px;" type="textarea" placeholder="描述" ></el-input>
+			  </el-form-item>
+			</el-form>
+	  	</el-aside>
+  		<el-main>
+  			<el-table
+		      :data="elementData"
+		      border
+		      style="width: 100%">
+		      <el-table-column
+		        prop="code"
+		        label="编码"
+		        >
+		      </el-table-column>
+		      <el-table-column
+		        prop="name"
+		        label="资源名称"
+		        >
+		      </el-table-column>
+		      <el-table-column label="操作" align="center" width="100">
+		      <template slot-scope="scope">
+		        <el-button  style="padding: 3px 8px;" size="mini" type="danger">删除</el-button>
+		      </template>
+		    </el-table-column>
+		    </el-table>
+  		</el-main>
+	  </el-container>
+	  
+	<span slot="footer" class="dialog-footer">
+	    <el-button @click="editMenuVisible = false">取 消</el-button>
+	    <el-button type="primary" @click="updateMenuInfo">保存</el-button>
+	 </span>
+	</el-dialog>
+</div>

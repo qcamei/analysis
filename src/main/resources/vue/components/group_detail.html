@@ -1,0 +1,182 @@
+<el-container>
+  <el-container style="padding-bottom: 30px;">
+  	<el-header style="padding:0;">
+	  	<el-button-group>
+		  <el-button type="primary" @click="addGroupVisible = true;isTop = addForm.parentId?false:true;" style="padding: 12px 20px;" >添加</el-button>
+		  <el-button type="primary" @click="updateGroupVisible = true" style="padding: 12px 20px;" >编辑</el-button>
+		  <el-button type="primary" @click="deleteGroupInfo" style="padding: 12px 20px;" >删除</el-button>
+		  <el-button type="success" @click="groupUsers" style="padding: 12px 20px;" >关联用户</el-button>
+		  <el-button type="warning" @click="authority" style="padding: 12px 20px;" >权限分配</el-button>
+		</el-button-group>
+	</el-header>
+	<el-container>
+	
+    <el-aside width="30%">
+    	<el-form size="mini">
+    	<el-form-item >
+    		<el-input placeholder="输入关键字进行过滤" v-model="filterText">
+		</el-input>
+    	</el-form-item>
+    	
+		</el-form>
+		<el-tree
+		  class="filter-tree"
+		  :data="treeData"
+		  node-key="id"
+		  default-expand-all
+		  :highlight-current="true"
+		  :expand-on-click-node="false"
+		  @node-click="getMenuDetail"
+		  ref="tree">
+		  <span class="custom-tree-node" slot-scope="{ node, data }">
+	        <span><i :class="data.children.length!=0?'fa fa-user fa-fw':'fa fa-address-card-o fa-fw'"></i><span>{{node.label}}</span></span>
+	      </span>
+		</el-tree>
+    
+    </el-aside>
+    <el-main style="padding:0 50px;">
+    	<el-container>
+    		<el-main style="padding:0;">
+   				<el-col :span="24">
+   					<el-col :span="2" style="min-width:90px;">
+   						<label class="el-form-item__label" style="line-height:32px;">群主|领导：</label>
+   					</el-col>
+   					<el-col :span="20">
+   						<template v-if="closable">
+							  <el-autocomplete
+							  	 style="width:184px;height:32px;line-height:32px;"
+							  	 value-key="name"
+							   	 v-if="leaderVisible"
+								 v-model="leaderValue"
+								 :fetch-suggestions="querySearchAsync"
+								 placeholder="请输入编号或姓名"
+								 @select="handleSelect"
+								>
+								<i :style="leaderId!==0?'':'display:none;'" class="el-icon-circle-check" style="color: #67c23a;line-height:32px;font-size:16px;" slot="suffix" @click="saveGroupLeader"></i>
+								<template slot-scope="{ item }">
+								    <div>{{ item.name }}<span style="margin-left:1em;font-size: 12px; color: #b4b4b4;">{{ item.username }}</span></div>
+								 </template>
+								</el-autocomplete>
+							<el-button v-else class="button-new-tag" style="width:90px;" size="small" @click="leaderVisible=true">新增成员</el-button>
+						</template>
+   						<template v-for="(tag,index) in leaders">
+		   					<el-tooltip  class="item" effect="dark" :content="tag.username+'      '+tag.name" placement="top">
+			   					<el-tag  :closable="closable" style="width:90px;" :type="closable?'danger':''" :disable-transitions="false" @close="deleteGroupLeader(tag)">
+								  <div style="text-align: center;width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;float:left;">{{tag.name}}</div>
+								</el-tag>
+							</el-tooltip>
+						</template>
+   					</el-col>
+   				</el-col>
+   				<el-col :span="24" style="margin-top:20px;">
+   					<el-col :span="2" style="min-width:90px;">
+   						<label class="el-form-item__label" style="line-height:32px;">组员|下属：</label>
+   					</el-col>
+   					<el-col :span="20" >
+   						<el-main style="max-height:8em;padding:1px;">
+   							<template v-if="closable">
+								  <el-autocomplete
+								  	 value-key="name"
+								  	 style="width:184px;height:32px;line-height:32px;"
+								   	 v-if="memberVisible"
+									  v-model="memberValue"
+									  :fetch-suggestions="querySearchAsync"
+									  placeholder="请输入编号或姓名"
+									  @select="handleSelect2"
+									>
+									<i :style="memberId!==0?'':'display:none;'" class="el-icon-circle-check" style="color: #67c23a;line-height:32px;font-size:16px;" @click="saveGroupMember" slot="suffix"></i>
+									<template slot-scope="{ item }">
+									    <div>{{ item.name }}<span style="margin-left:1em;font-size: 12px; color: #b4b4b4;">{{ item.username }}</span></div>
+									</template>
+									</el-autocomplete>
+								<el-button v-else class="button-new-tag" style="width:90px;" size="small" @click="memberVisible=true">新增成员</el-button>
+							</template>
+	   						<template v-for="(tag,index) in members">
+			   					<el-popover trigger="click"  class="item" effect="dark" :content="tag.username+'      '+tag.name" placement="bottom">
+				   					<el-tag  slot="reference" style="width:90px;" :closable="closable" :type="closable?'danger':''" :disable-transitions="false" @close="deleteGroupMember(tag)">
+									  <div style="text-align: center;width: 55px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;float:left;">{{tag.name}}</div>
+									</el-tag>
+								</el-popover>
+							</template>
+						</el-main>
+   					</el-col>
+   				</el-col>
+				
+    		</el-main>
+    	</el-container>
+	   <el-container style="margin-top:50px;">
+	   	  <el-header style="padding:0;">
+	   	  	<i style="font-size:18px;">权限分配</i>
+	   	  	<hr/>
+	   	  </el-header>	
+		  <el-main style="padding:0px;">
+		  	<el-tree
+		      :data="menuTreeData"
+		      node-key="id"
+		      default-expand-all
+		      :expand-on-click-node="false">
+		      <el-container slot-scope="{ node, data }">
+		      	<el-aside style="width:120px;padding:0;">
+		      		<span><i :class="node.icon"></i><span>{{node.label}}</span></span>
+		      	</el-aside>
+		      	<el-main style="padding:0;">
+		      		<div :style="data.parentId===-1?'padding-left:18px':''">
+					   <el-checkbox v-model="item.resource_id>0?true:false"  @change="checked=>allotResourceAuthority(checked,item,data)"  v-for="item in data.elements"  :label="item.name" style="width:60px;"></el-checkbox>
+					</div>
+		      	</el-main>
+		      </el-container>
+		    </el-tree>
+		  </el-main>
+		</el-container>
+	  
+    </el-main>
+    </el-container>
+  </el-container>
+  
+  <el-dialog title="添加角色" :visible.sync="addGroupVisible" width="500px">
+	  <el-form label-width="100px" size="mini" style="margin-top:1em;">
+	  	  <el-form-item label="是否顶级">
+		    <el-switch v-model="isTop"></el-switch>
+		  </el-form-item>	
+		  <el-form-item v-show="!isTop" label="父类编码" >
+		    <el-input v-model="addForm.parentCode" disabled style="width: 350px;" placeholder="父类编码"></el-input>
+		  </el-form-item>
+		  <el-form-item v-show="!isTop" label="父类名称" >
+		    <el-input v-model="addForm.parentLabel" disabled style="width: 350px;" placeholder="父类名称"></el-input>
+		  </el-form-item>
+		  <el-form-item label="角色编码" >
+		      <el-input v-model="addForm.code"  style="width: 350px;" placeholder="角色编码" ></el-input>
+		  </el-form-item>
+		  <el-form-item label="角色名称" >
+		    <el-input v-model="addForm.label" style="width: 350px;" placeholder="角色名称"></el-input>
+		  </el-form-item>
+		  <el-form-item label="描述" >
+		      <el-input v-model="addForm.description" style="width: 350px;" type="textarea" placeholder="描述" ></el-input>
+		  </el-form-item>
+		</el-form>
+	  
+	<span slot="footer" class="dialog-footer">
+	    <el-button @click="addGroupVisible = false">取 消</el-button>
+	    <el-button type="primary" @click="saveGroupInfo">保存</el-button>
+	 </span>
+	</el-dialog>
+	
+	<el-dialog title="编辑角色" :visible.sync="updateGroupVisible" width="500px">
+	  <el-form label-width="100px" size="mini" style="margin-top:1em;">
+		  <el-form-item label="角色编码" >
+		      <el-input v-model="updateForm.code" disabled  style="width: 350px;" placeholder="角色编码" ></el-input>
+		  </el-form-item>
+		  <el-form-item label="角色名称" >
+		    <el-input v-model="updateForm.label" style="width: 350px;" placeholder="角色名称"></el-input>
+		  </el-form-item>
+		  <el-form-item label="描述" >
+		      <el-input v-model="updateForm.description" style="width: 350px;" type="textarea" placeholder="描述" ></el-input>
+		  </el-form-item>
+		</el-form>
+	  
+		<span slot="footer" class="dialog-footer">
+		    <el-button @click="updateGroupVisible = false">取 消</el-button>
+		    <el-button type="primary" @click="updateGroupInfo">保存</el-button>
+		</span>
+	</el-dialog>
+</el-container>

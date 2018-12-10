@@ -1,0 +1,381 @@
+<el-container class="content">
+	<el-main>
+		<el-tabs type="border-card" v-model="activeName">
+		  <el-tab-pane label="主题运算" name="first">
+		  <el-form size="mini">
+			 <el-form-item >
+				<el-input v-model="keyword"  placeholder="请输入过滤条件"></el-input>
+			 </el-form-item>
+		  </el-form>
+		  <el-table
+				    :data="tableData"
+				    border
+				     @selection-change="changeFun"
+				    highlight-current-row
+				    height="350"
+				    >
+				     <el-table-column
+				      type="selection"
+				      width="55">
+				    </el-table-column>
+				    <el-table-column
+				      prop="solution_name"
+				      label="商品组合"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="dept_code"
+				      label="Hier1"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="num_group"
+				      label="商品家族数"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="num_prod"
+				      label="商品总数"
+				      >
+				    </el-table-column>
+				  </el-table>
+				  <el-form size="mini" style="margin-top:1em;" :inline="true">
+				  	 <el-form-item>
+						<el-button type="primary" @click.prevent="distribution">查看消费能力分布</el-button>
+					 </el-form-item>
+					 <el-form-item label="剔除消费金额小于">
+						<el-input-number v-model="minSpend" controls-position="right"  placeholder="请输入..."></el-input-number>
+					 </el-form-item>
+					 <el-form-item label="剔除消费金额大于">
+						<el-input-number v-model="maxSpend"  controls-position="right" placeholder="请输入..."></el-input-number>
+					 </el-form-item>
+					 <el-form-item style="margin-left:2em;">
+						<el-input v-model="analysisName"  placeholder="主题分析名"></el-input>
+					 </el-form-item>
+					 <el-form-item>
+						<el-button @click="runFactorAnalysis" :disabled="multipleSelection.length==0" type="primary">运算主题分析</el-button>
+					 </el-form-item>
+				  </el-form>
+						  
+		  </el-tab-pane>
+		  <el-tab-pane label="查看结果" name="second">
+		  	<el-container>
+			  <el-header>
+				  <el-row :gutter="60" >
+		  			<el-col :span="6">
+		  				<el-table
+		  				ref="themeTable"
+					    :data="themeData"
+					    border
+					    highlight-current-row
+					    @cell-click="purchaseThemesClick"
+					    @current-change="handleCurrentChange2"
+					    height="142"
+					    >
+					     <el-table-column width="70">
+					     	<template slot-scope="scope">
+						        <el-button
+						          size="mini"
+						          type="danger"
+						          @click="deleteFactorAnalysis(scope.$index, scope.row)">删除</el-button>
+						      </template>
+					    </el-table-column>
+					    <el-table-column
+					      prop="analysis_name"
+					      :show-overflow-tooltip="true"
+					      label="主题分析" >
+					    </el-table-column>
+					  </el-table>
+		  			</el-col>
+		  			<el-col :span="3">
+		  				<el-table
+		  				ref="numFactorTable"
+					    :data="numFactorData"
+					    border
+					    highlight-current-row
+					    @row-click="getNumFactorClick"
+					    @current-change="handleCurrentChange2"
+					    height="142"
+					    >
+					    <el-table-column
+					      prop="num_factor"
+					      :show-overflow-tooltip="true"
+					      label="主题数" >
+					    </el-table-column>
+					  </el-table>
+		  			</el-col>
+		  			<el-col :span="3">
+		  				<el-table
+		  				ref="rotationTable"
+					    :data="rotationData"
+					    border
+					    highlight-current-row
+					    @row-click="getRotationClick"
+					    @current-change="handleCurrentChange2"
+					    height="142"
+					    >
+					    <el-table-column
+					      prop="name"
+					      :show-overflow-tooltip="true"
+					      label="旋转" >
+					    </el-table-column>
+					  </el-table>
+		  			</el-col>
+		  			<el-col :span="6">
+		  				<el-table
+		  				ref="savedSolutionsTable"
+					    :data="savedSolutionsData"
+					    @cell-click="getSavedSolutionsClick"
+					    border
+					    highlight-current-row
+					    @current-change="handleCurrentChange2"
+					    :row-class-name="getSavedSolutionsRow"
+					    height="142"
+					    >
+					     <el-table-column width="70">
+					     	<template slot-scope="scope">
+						        <el-button
+						          size="mini"
+						          type="danger"
+						          @click="deleteFactorSolution(scope.$index, scope.row)">删除</el-button>
+						      </template>
+					    </el-table-column>
+					    <el-table-column
+					      prop="analysis_name"
+					      :show-overflow-tooltip="true"
+					      label="已保存的主题方案" >
+					    </el-table-column>
+					  </el-table>
+		  			</el-col>
+		  			<el-col :span="6" style="height:150px;line-height:40px;padding-top:40px;">
+		  				<el-row>
+							<el-button v-show="chartTable=='chart'" @click="chartTable='table'" type="primary">表格显示</el-button>
+						</el-row>
+						<el-row>
+							<el-button v-show="chartTable=='table'"  @click="chartTable='chart'" type="primary">图形显示</el-button>
+						</el-row>
+						<el-row>
+							<el-button type="primary">导出数据</el-button>
+						</el-row>
+					  </el-form>
+		  			</el-col>
+		  		  </el-row>	
+			  </el-header>
+			  <el-main v-show="chartTable=='chart'" style="overflow:hidden;padding: 10px 0;">
+			  	<el-row :gutter="30"  >
+		  			<el-col :span="16">
+		  			<div id="container" style="height: 20em;"></div>
+		  			</el-col>
+		  			<el-col :span="8">
+		  			<div id="container2" style="height: 20em;"></div>
+		  			</el-col>
+		  		</el-row>
+			  </el-main>
+			  <el-main v-show="chartTable=='table'" style="overflow:hidden;padding: 10px 0;">
+			  	  <el-table
+				    :data="factorResultListData"
+				    border
+				    highlight-current-row
+				    height="350"
+				    >
+				     <el-table-column
+				      type="index"
+				      width="55">
+				    </el-table-column>
+				    <el-table-column
+				      prop="group_name"
+				      label="商品组合"
+				      :show-overflow-tooltip="true"
+				      >
+				    </el-table-column>
+				    <el-table-column
+				      prop="dept_code"
+				      label="Hier1"
+				      >
+				    </el-table-column>
+				    <!-- 自定义列的遍历  -->     
+				    <el-table-column v-for="(item, index) in themeTheadNames"  :key="index" :label="item" >          
+					    <template slot-scope="scope">           
+					    <span>{{scope.row["factor_"+(index+1)]}}</span>          
+					    </template>        
+				    </el-table-column>
+				  </el-table>
+				  <el-pagination
+				      :page-sizes="[5, 10, 50, 100]"
+				      :page-size="pageSize"
+		              :current-page="pageNum"
+		              @size-change="handleSizeChange"
+		      		  @current-change="handleCurrentChange"
+				      layout="total, sizes, prev, pager, next, jumper"
+				      :total="total">
+				  </el-pagination>
+			  </el-main>
+			  <el-footer v-show="chartTable=='chart'">
+			  	<el-form size="mini" style="margin-top:1em;float:right;margin-right:17%;" :inline="true">
+					 <el-form-item :label="'Theme '+factorInd+'：'">
+						<el-input v-model="factorName"  placeholder="主题名"></el-input>
+					 </el-form-item>
+					 <el-form-item >
+						<el-button type="primary" :disabled="factorInd===''" @click.prevent="saveFactorName">更新主题名</el-button>
+					 </el-form-item>
+				  </el-form>
+			  </el-footer>
+			</el-container>
+		  </el-tab-pane>
+		  <el-tab-pane label="运算市场细分" name="third">
+		  	<el-container>
+			  <el-header>
+				  <el-row :gutter="60" >
+		  			<el-col :span="6">
+		  				<el-table
+		  				ref="savedSolutionsTable"
+					    :data="savedSolutionsData"
+					    @cell-click="getSavedSolutionsClick2"
+					    border
+					    highlight-current-row
+					    @current-change="handleCurrentChange2"
+					    height="142"
+					    >
+					    <el-table-column
+					      prop="analysis_name"
+					      :show-overflow-tooltip="true"
+					      label="已保存的主题方案" >
+					    </el-table-column>
+					  </el-table>
+		  			</el-col>
+		  		  </el-row>	
+			  </el-header>
+			  <el-main style="overflow:hidden;padding: 10px 0;">
+			  	<el-row :gutter="60"  >
+		  			<el-col :span="6">
+		  				<el-table
+		  				ref="purchaseThemesTable"
+					    :data="purchaseThemesData"
+					    @selection-change="changeFun2"
+					    select-on-indeterminate
+					    border
+					    highlight-current-row
+					    @current-change="handleCurrentChange2"
+					    height="300"
+					    >
+					     <el-table-column type="selection" width="45">
+					    </el-table-column>
+					    <el-table-column
+					      prop="factor_name"
+					      :show-overflow-tooltip="true"
+					      label="主题" >
+					    </el-table-column>
+					  </el-table>
+		  			</el-col>
+		  			<el-col :span="18">
+		  				<el-form size="mini" label-width="140px" style="margin-top:1em;" :inline="true">
+					 <el-form-item label="最少“Hier1”数：">
+					    <el-select v-model="segmentation.minCluster" placeholder="请选择" style="width:100px;">
+					      <el-option label="无限制" value="0"></el-option>
+					      <el-option label="2" value="2"></el-option>
+					      <el-option label="3" value="3"></el-option>
+					    </el-select>
+					  </el-form-item>
+					 <el-form-item>
+					 	<el-popover placement="right-end" :value="deptVisible&&activeName=='third'&&layid==33" trigger="manual" >
+						    	<el-table :data="deptDistributionData">
+								    <el-table-column  property="stats" label="统计"></el-table-column>
+								    <el-table-column  property="num_cust" label="消费者数"></el-table-column>
+								    <el-table-column  property="cust_spend" label="占比">
+								     <template scope="scope">
+								      {{Math.round(scope.row.cust_spend*100*100)/100+'%'}}
+								      </template>
+								    </el-table-column>
+								    <el-table-column  property="spend" label="增量">
+								    <template scope="scope">
+								      {{Math.round(scope.row.spend*100*100)/100+'%'}}
+								      </template>
+								    </el-table-column>
+								</el-table>
+						<el-button slot="reference" @click="deptVisible=!deptVisible"  :disabled="segmentation.analysisKey==0" type="primary" >按层级数查看数据分布</el-button>
+						</el-popover>
+					 </el-form-item>
+				  </el-form>
+				  <el-form size="mini" label-width="140px" style="margin-top:1em;" :inline="true">
+					 <el-form-item label="  最少“家族”数：">
+					    <el-select v-model="segmentation.minDept" placeholder="请选择" style="width:100px;">
+					      <el-option label="无限制" value="0"></el-option>
+					      <el-option label="2" value="2"></el-option>
+					      <el-option label="3" value="3"></el-option>
+					      <el-option label="4" value="4"></el-option>
+					      <el-option label="5" value="5"></el-option>
+					      <el-option label="6" value="6"></el-option>
+					    </el-select>
+					  </el-form-item>
+					 <el-form-item>
+					    <el-popover placement="right-start"  :value="clusterVisible&&activeName=='third'&&layid==33" trigger="manual">
+						    	<el-table :data="clusterDistributionData">
+								    <el-table-column  property="stats" label="统计"></el-table-column>
+								    <el-table-column  property="num_cust" label="消费者数"></el-table-column>
+								    <el-table-column  property="cust_spend" label="占比">
+								     <template scope="scope">
+								      {{Math.round(scope.row.cust_spend*100*100)/100+'%'}}
+								      </template>
+								    </el-table-column>
+								    <el-table-column  property="spend" label="增量">
+								    <template scope="scope">
+								      {{Math.round(scope.row.spend*100*100)/100+'%'}}
+								      </template>
+								    </el-table-column>
+								</el-table>
+						<el-button slot="reference" @click="clusterVisible=!clusterVisible" :disabled="segmentation.analysisKey==0" type="primary" >按家族数查看数据分布</el-button>
+						</el-popover>
+					 </el-form-item>
+				  </el-form>
+				  <el-form size="mini" label-width="140px" style="margin-top:1em;" :inline="true">
+					 <el-form-item label="市场细分区间：">
+					      <el-input-number v-model="segmentation.minSeg" controls-position="right" :min="2" :max="30" style="width:100px;"></el-input-number>
+					      一
+					      <el-input-number v-model="segmentation.maxSeg" controls-position="right" :min="2" :max="30"  style="width:100px;"></el-input-number>
+					  </el-form-item>
+				  </el-form>
+		  			</el-col>
+		  		</el-row>
+			  </el-main>
+			  <el-footer>
+			  	<el-form size="mini" style="margin-top:1em;float:right;margin-right:17%;" :inline="true">
+					 <el-form-item>
+						<el-button type="primary" :disabled="segmentation.selectedFactors===''" @click.prevent="runCustomerProfile">1.初始化</el-button>
+					 </el-form-item>
+					 <el-form-item>
+						<el-button type="primary" :disabled="segmentation.selectedFactors===''" @click.prevent="runSegmentationJob">2.计算市场细分</el-button>
+					 </el-form-item>
+				  </el-form>
+			  </el-footer>
+			</el-container>
+		  </el-tab-pane>
+		</el-tabs>
+		
+	</el-main>
+	<el-dialog :title="skuTitle" :visible.sync="skuVisible" width="900px">
+	  <el-table :data="skuData" border height="310px">
+	    <el-table-column type="index" width="55">
+	    </el-table-column>
+	    <el-table-column property="prod_code" :show-overflow-tooltip="true" label="SKU"></el-table-column>
+	    <el-table-column property="prod_desc" :show-overflow-tooltip="true" label="品名"></el-table-column>
+	    <el-table-column property="total_spend" :show-overflow-tooltip="true" label="销售额"></el-table-column>
+	    <el-table-column property="total_cust" :show-overflow-tooltip="true" label="消费者数"></el-table-column>
+	    <el-table-column property="avg_price" :show-overflow-tooltip="true" label="价格"></el-table-column>
+	  </el-table>
+	 <span slot="footer" class="dialog-footer">
+	 </span>
+	</el-dialog>
+	<el-dialog title="查看消费者数量分布" :visible.sync="distributionVisible" width="900px">
+		  <el-table :data="distributionData" border height="310px">
+		    <el-table-column type="index" width="55">
+		    </el-table-column>
+		    <el-table-column property="perc_desc" :show-overflow-tooltip="true" label="十等分"></el-table-column>
+		    <el-table-column property="num_cust" :show-overflow-tooltip="true" label="消费者数"></el-table-column>
+		    <el-table-column property="min_stats" :show-overflow-tooltip="true" label="最小消费者数"></el-table-column>
+		    <el-table-column property="max_stats" :show-overflow-tooltip="true" label="最大消费者数"></el-table-column>
+		    <el-table-column property="perc_spend" :show-overflow-tooltip="true" label="销售占比"></el-table-column>
+		  </el-table>
+		 <span slot="footer" class="dialog-footer">
+		 </span>
+		</el-dialog>
+</el-container>
